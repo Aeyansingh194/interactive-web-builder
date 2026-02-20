@@ -1,36 +1,56 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { BookOpen, Calendar, Search, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 import { useToast } from "@/hooks/use-toast";
 
-type Entry = { text: string; title: string; date: Date };
+type Mood = "positive" | "neutral" | "negative";
+type Entry = { text: string; title: string; date: Date; mood: Mood };
+
+const prompts = [
+  "Describe a moment when you felt proud of yourself.",
+  "What made you smile today?",
+  "Write about something you're grateful for.",
+  "What's a challenge you overcame recently?",
+  "Describe a place where you feel at peace.",
+  "What would you tell your younger self?",
+  "Write about someone who inspires you.",
+];
+
+const moodConfig: Record<Mood, { emoji: string; label: string; color: string; dot: string }> = {
+  positive: { emoji: "😊", label: "Positive", color: "bg-emerald-100 text-emerald-700 border-emerald-300", dot: "bg-emerald-500" },
+  neutral: { emoji: "😐", label: "Neutral", color: "bg-amber-100 text-amber-700 border-amber-300", dot: "bg-amber-500" },
+  negative: { emoji: "😔", label: "Negative", color: "bg-rose-100 text-rose-700 border-rose-300", dot: "bg-rose-500" },
+};
 
 const JournalPage = () => {
   const [text, setText] = useState("");
   const [title, setTitle] = useState("");
+  const [mood, setMood] = useState<Mood | null>(null);
   const [entries, setEntries] = useState<Entry[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
-  const [expandedEntry, setExpandedEntry] = useState<number | null>(null);
+  const [calendarMonth, setCalendarMonth] = useState(new Date());
   const { toast } = useToast();
+
+  const prompt = useMemo(() => prompts[Math.floor(Math.random() * prompts.length)], []);
 
   const save = () => {
     if (!text.trim()) return;
     setEntries((prev) => [
-      { text: text.trim(), title: title.trim() || `Entry - ${new Date().toLocaleDateString()}`, date: new Date() },
+      { text: text.trim(), title: title.trim() || `Entry - ${new Date().toLocaleDateString()}`, date: new Date(), mood: mood || "neutral" },
       ...prev,
     ]);
     setText("");
     setTitle("");
-    toast({ title: "Entry saved 📝", description: "Your diary entry has been saved." });
+    setMood(null);
+    toast({ title: "Entry saved 📝", description: "Your journal entry has been saved." });
   };
 
   const deleteEntry = (index: number) => {
     setEntries((prev) => prev.filter((_, i) => i !== index));
-    toast({ title: "Entry deleted", description: "Your diary entry has been removed." });
+    toast({ title: "Entry deleted", description: "Your journal entry has been removed." });
   };
 
   const filteredEntries = entries.filter(
@@ -39,128 +59,264 @@ const JournalPage = () => {
       e.title.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
-  const formatDate = (d: Date) => {
-    const day = d.getDate();
-    const month = d.toLocaleString("default", { month: "short" });
-    const year = d.getFullYear();
-    const time = d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-    return { day, month, year, time };
-  };
+  const wordCount = text.trim().split(/\s+/).filter(Boolean).length;
+  const readTime = Math.max(1, Math.ceil(wordCount / 200));
+
+  // Calendar logic
+  const year = calendarMonth.getFullYear();
+  const month = calendarMonth.getMonth();
+  const firstDay = new Date(year, month, 1).getDay();
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const today = new Date();
+  const entryDates = new Set(entries.map((e) => `${e.date.getFullYear()}-${e.date.getMonth()}-${e.date.getDate()}`));
+
+  const prevMonth = () => setCalendarMonth(new Date(year, month - 1, 1));
+  const nextMonth = () => setCalendarMonth(new Date(year, month + 1, 1));
+  const monthName = calendarMonth.toLocaleString("default", { month: "long" });
+
+  // Stats
+  const thisMonthEntries = entries.filter((e) => e.date.getMonth() === today.getMonth() && e.date.getFullYear() === today.getFullYear());
+  const streak = (() => {
+    let count = 0;
+    const d = new Date(today);
+    while (true) {
+      const key = `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+      if (entryDates.has(key)) { count++; d.setDate(d.getDate() - 1); } else break;
+    }
+    return count;
+  })();
+  const moodTrend = (() => {
+    if (thisMonthEntries.length < 2) return "Neutral";
+    const recent = thisMonthEntries.slice(0, Math.ceil(thisMonthEntries.length / 2));
+    const positiveCount = recent.filter((e) => e.mood === "positive").length;
+    return positiveCount > recent.length / 2 ? "Improving" : "Steady";
+  })();
 
   return (
     <div className="min-h-screen bg-background flex flex-col">
       <Navbar />
-      <div className="flex-1 max-w-3xl mx-auto w-full px-4 py-8">
+      <div className="flex-1 w-full max-w-7xl mx-auto px-4 py-8">
         {/* Header */}
         <div className="mb-8">
-          <h1 className="text-3xl font-bold text-foreground mb-1 flex items-center gap-3">
-            <BookOpen className="w-7 h-7 text-primary" />
-            My Diary
-          </h1>
-          <p className="text-muted-foreground">A private space to write down your thoughts, feelings, and reflections.</p>
+          <h1 className="text-3xl font-bold text-foreground mb-1">📓 Reflection Journal</h1>
+          <p className="text-muted-foreground">Write about your thoughts and feelings to track your emotional wellbeing.</p>
         </div>
 
-        {/* Writing area */}
-        <motion.div
-          className="bg-card border border-border rounded-2xl p-6 mb-8 shadow-sm"
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-        >
-          <Input
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            placeholder="Give this entry a title..."
-            className="border-none bg-transparent text-lg font-semibold placeholder:text-muted-foreground/50 focus-visible:ring-0 px-0 mb-3"
-          />
-          <div className="w-full h-px bg-border mb-4" />
-          <textarea
-            value={text}
-            onChange={(e) => setText(e.target.value)}
-            placeholder="Dear Diary, today I feel..."
-            className="w-full bg-transparent text-sm resize-none min-h-[200px] focus:outline-none leading-relaxed text-foreground placeholder:text-muted-foreground/40"
-          />
-          <div className="flex items-center justify-between mt-4 pt-4 border-t border-border">
-            <span className="text-xs text-muted-foreground">
-              {text.length} characters · {text.trim().split(/\s+/).filter(Boolean).length} words
-            </span>
-            <Button onClick={save} disabled={!text.trim()} className="rounded-full gap-2">
-              <BookOpen className="w-4 h-4" /> Save Entry
-            </Button>
-          </div>
-        </motion.div>
+        <div className="flex flex-col lg:flex-row gap-6">
+          {/* Left column - main content */}
+          <div className="flex-1 min-w-0">
+            {/* Search */}
+            <Input
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search entries..."
+              className="mb-6 rounded-xl"
+            />
 
-        {/* Past entries */}
-        {entries.length > 0 && (
-          <div>
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="font-semibold text-foreground text-lg">
-                Past Entries ({entries.length})
-              </h3>
-              <div className="relative w-48">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                <Input
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="Search entries..."
-                  className="pl-9 rounded-full text-xs h-9"
-                />
+            {/* Today's Journal */}
+            <motion.div
+              className="bg-card border border-border rounded-2xl p-6 mb-6 shadow-sm"
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+            >
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-xl font-bold text-foreground">Today's Journal</h2>
+                <span className="text-sm text-muted-foreground flex items-center gap-1">
+                  📅 {today.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}
+                </span>
               </div>
-            </div>
 
-            <AnimatePresence>
-              {filteredEntries.map((e, i) => {
-                const d = formatDate(e.date);
-                const isExpanded = expandedEntry === i;
-                return (
+              {/* Writing Prompt */}
+              <div className="bg-accent/50 rounded-xl p-4 mb-5 flex items-start gap-3">
+                <span className="text-lg">💡</span>
+                <div>
+                  <p className="text-sm font-semibold text-foreground">Writing Prompt</p>
+                  <p className="text-sm text-muted-foreground">{prompt}</p>
+                </div>
+              </div>
+
+              <Input
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                placeholder="Give this entry a title..."
+                className="border-none bg-transparent text-lg font-semibold placeholder:text-muted-foreground/50 focus-visible:ring-0 px-0 mb-3"
+              />
+
+              <textarea
+                value={text}
+                onChange={(e) => setText(e.target.value)}
+                placeholder="Write your thoughts here..."
+                className="w-full bg-muted/30 rounded-xl p-4 text-sm resize-none min-h-[180px] focus:outline-none leading-relaxed text-foreground placeholder:text-muted-foreground/40 border border-border"
+              />
+
+              <div className="flex items-center justify-between mt-3 text-xs text-muted-foreground">
+                <span>{wordCount} words</span>
+                <span>⏱ ~{readTime} min read</span>
+              </div>
+
+              {/* Mood Selector */}
+              <div className="mt-5">
+                <p className="text-sm font-medium text-foreground mb-3">How are you feeling?</p>
+                <div className="flex gap-3">
+                  {(Object.keys(moodConfig) as Mood[]).map((m) => (
+                    <button
+                      key={m}
+                      onClick={() => setMood(m)}
+                      className={`flex-1 py-3 rounded-xl text-sm font-medium border transition-all ${
+                        mood === m
+                          ? moodConfig[m].color + " ring-2 ring-offset-1"
+                          : "bg-card border-border text-muted-foreground hover:bg-muted"
+                      }`}
+                    >
+                      {moodConfig[m].emoji} {moodConfig[m].label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <Button onClick={save} disabled={!text.trim()} className="w-full mt-5 rounded-xl gap-2 py-6">
+                💾 Save Entry
+              </Button>
+            </motion.div>
+
+            {/* Past entries list */}
+            {filteredEntries.length > 0 && (
+              <AnimatePresence>
+                {filteredEntries.map((e, i) => (
                   <motion.div
                     key={e.date.getTime()}
-                    className="bg-card rounded-2xl border border-border mb-3 overflow-hidden cursor-pointer hover:shadow-sm transition-shadow"
+                    className="bg-card rounded-2xl border border-border mb-3 p-4 hover:shadow-sm transition-shadow"
                     initial={{ opacity: 0, y: 10 }}
                     animate={{ opacity: 1, y: 0 }}
                     exit={{ opacity: 0, x: -20 }}
-                    onClick={() => setExpandedEntry(isExpanded ? null : i)}
                   >
-                    <div className="flex items-start gap-4 p-5">
-                      {/* Date badge */}
-                      <div className="bg-muted rounded-xl px-3 py-2 text-center shrink-0 min-w-[52px]">
-                        <span className="text-lg font-bold text-foreground block leading-tight">{d.day}</span>
-                        <span className="text-[10px] uppercase text-muted-foreground font-medium">{d.month}</span>
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex items-start gap-3 min-w-0">
+                        <div className={`w-2.5 h-2.5 rounded-full mt-1.5 shrink-0 ${moodConfig[e.mood].dot}`} />
+                        <div className="min-w-0">
+                          <h4 className="font-medium text-foreground text-sm">{e.title}</h4>
+                          <p className="text-xs text-muted-foreground line-clamp-2 mt-0.5">{e.text}</p>
+                        </div>
                       </div>
-
-                      <div className="flex-1 min-w-0">
-                        <h4 className="font-medium text-foreground text-sm mb-1">{e.title}</h4>
-                        <p className={`text-xs text-muted-foreground ${isExpanded ? "whitespace-pre-wrap" : "line-clamp-2"}`}>
-                          {e.text}
-                        </p>
-                      </div>
-
                       <div className="flex items-center gap-2 shrink-0">
-                        <span className="text-[10px] text-muted-foreground">{d.time}</span>
+                        <span className="text-[10px] text-muted-foreground whitespace-nowrap">
+                          {e.date.toLocaleDateString()}
+                        </span>
                         <button
-                          onClick={(ev) => { ev.stopPropagation(); deleteEntry(i); }}
+                          onClick={() => deleteEntry(i)}
                           className="text-muted-foreground hover:text-destructive transition-colors p-1"
                         >
-                          <Trash2 className="w-3.5 h-3.5" />
+                          🗑️
                         </button>
                       </div>
                     </div>
                   </motion.div>
-                );
-              })}
-            </AnimatePresence>
+                ))}
+              </AnimatePresence>
+            )}
 
-            {filteredEntries.length === 0 && searchQuery && (
-              <p className="text-sm text-muted-foreground text-center py-8">No entries matching "{searchQuery}"</p>
+            {entries.length === 0 && !searchQuery && (
+              <div className="text-center py-16 text-muted-foreground">
+                <span className="text-5xl block mb-4">📅</span>
+                <p className="text-sm">Your journal is empty. Start writing your first entry above.</p>
+              </div>
             )}
           </div>
-        )}
 
-        {entries.length === 0 && (
-          <div className="text-center py-16 text-muted-foreground">
-            <Calendar className="w-12 h-12 mx-auto mb-4 opacity-30" />
-            <p className="text-sm">Your diary is empty. Start writing your first entry above.</p>
+          {/* Right sidebar */}
+          <div className="w-full lg:w-80 shrink-0 space-y-5">
+            {/* Calendar */}
+            <div className="bg-card border border-border rounded-2xl p-5">
+              <h3 className="font-semibold text-foreground mb-4 flex items-center gap-2">📅 Journal Calendar</h3>
+              <div className="grid grid-cols-7 gap-1 text-center text-xs mb-2">
+                {["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"].map((d) => (
+                  <span key={d} className="font-medium text-muted-foreground py-1">{d}</span>
+                ))}
+              </div>
+              <div className="grid grid-cols-7 gap-1 text-center text-xs">
+                {Array.from({ length: firstDay }).map((_, i) => <span key={`empty-${i}`} />)}
+                {Array.from({ length: daysInMonth }).map((_, i) => {
+                  const day = i + 1;
+                  const isToday = day === today.getDate() && month === today.getMonth() && year === today.getFullYear();
+                  const hasEntry = entryDates.has(`${year}-${month}-${day}`);
+                  return (
+                    <span
+                      key={day}
+                      className={`py-1.5 rounded-lg font-medium ${
+                        isToday
+                          ? "bg-primary text-primary-foreground"
+                          : hasEntry
+                          ? "text-primary font-bold"
+                          : "text-foreground"
+                      }`}
+                    >
+                      {day}
+                    </span>
+                  );
+                })}
+              </div>
+              <div className="flex items-center justify-between mt-3 text-xs text-muted-foreground">
+                <button onClick={prevMonth} className="hover:text-foreground">← {new Date(year, month - 1).toLocaleString("default", { month: "short" })}</button>
+                <span className="font-medium text-foreground">{monthName} {year}</span>
+                <button onClick={nextMonth} className="hover:text-foreground">{new Date(year, month + 1).toLocaleString("default", { month: "short" })} →</button>
+              </div>
+            </div>
+
+            {/* Journal Stats */}
+            <div className="bg-card border border-border rounded-2xl p-5">
+              <h3 className="font-semibold text-foreground mb-4 flex items-center gap-2">📊 Journal Stats</h3>
+              <div className="space-y-4">
+                <div>
+                  <div className="flex justify-between text-sm mb-1">
+                    <span className="text-primary font-medium">Entries this month</span>
+                    <span className="font-bold">{thisMonthEntries.length}</span>
+                  </div>
+                  <div className="h-2 bg-muted rounded-full overflow-hidden">
+                    <div className="h-full bg-primary rounded-full transition-all" style={{ width: `${Math.min(100, thisMonthEntries.length * 3.3)}%` }} />
+                  </div>
+                </div>
+                <div>
+                  <div className="flex justify-between text-sm mb-1">
+                    <span className="text-amber-600 font-medium">Current streak</span>
+                    <span className="font-bold">{streak} days</span>
+                  </div>
+                  <div className="h-2 bg-muted rounded-full overflow-hidden">
+                    <div className="h-full bg-amber-500 rounded-full transition-all" style={{ width: `${Math.min(100, streak * 10)}%` }} />
+                  </div>
+                </div>
+                <div>
+                  <div className="flex justify-between text-sm mb-1">
+                    <span className="text-emerald-600 font-medium">Mood trend</span>
+                    <span className="font-bold text-emerald-600">{moodTrend}</span>
+                  </div>
+                  <div className="h-2 bg-muted rounded-full overflow-hidden">
+                    <div className="h-full bg-emerald-500 rounded-full" style={{ width: moodTrend === "Improving" ? "80%" : "50%" }} />
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Recent Entries */}
+            <div className="bg-card border border-border rounded-2xl p-5">
+              <h3 className="font-semibold text-foreground mb-4 flex items-center gap-2">🕐 Recent Entries</h3>
+              {entries.length === 0 ? (
+                <p className="text-xs text-muted-foreground">No entries yet.</p>
+              ) : (
+                <div className="space-y-3">
+                  {entries.slice(0, 5).map((e, i) => (
+                    <div key={i} className="flex items-start gap-2">
+                      <div className={`w-2 h-2 rounded-full mt-1.5 shrink-0 ${moodConfig[e.mood].dot}`} />
+                      <div className="min-w-0">
+                        <p className="text-xs font-medium text-foreground">{e.date.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}</p>
+                        <p className="text-xs text-muted-foreground line-clamp-1">{e.text}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
-        )}
+        </div>
       </div>
       <Footer />
     </div>
