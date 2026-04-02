@@ -26,12 +26,12 @@ const steps = [
 
 const HowItWorks = () => {
   return (
-    <section className="py-20 px-6">
+    <section className="px-4 py-16 sm:px-6 sm:py-20">
       <div className="container mx-auto">
-        <h2 className="text-3xl font-bold text-center mb-16 text-foreground">
+        <h2 className="mb-12 text-center text-2xl font-bold text-foreground sm:mb-16 sm:text-3xl">
           How it <span className="text-primary">works</span>
         </h2>
-        <div className="grid md:grid-cols-3 gap-8">
+        <div className="grid gap-8 md:grid-cols-2 xl:grid-cols-3">
           {steps.map((step, i) => (
             <motion.div
               key={step.num}
@@ -44,10 +44,10 @@ const HowItWorks = () => {
               <p className="text-sm font-medium text-muted-foreground">
                 <span className="text-primary">{step.num}.</span> <span className="font-bold text-foreground">{step.title}</span>
               </p>
-              <div className={`${step.gradient} rounded-3xl p-8 h-64 flex items-center justify-center`}>
+              <div className={`${step.gradient} flex min-h-[15rem] items-center justify-center rounded-3xl p-8`}>
                 <span className="text-6xl">{step.emoji}</span>
               </div>
-              <p className="text-sm text-muted-foreground text-center">{step.desc}</p>
+              <p className="text-center text-sm leading-7 text-muted-foreground">{step.desc}</p>
             </motion.div>
           ))}
         </div>

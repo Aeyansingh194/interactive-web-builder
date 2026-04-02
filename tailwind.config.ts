@@ -58,6 +58,14 @@ export default {
         "mint-green": "hsl(var(--mint-green))",
         peach: "hsl(var(--peach))",
         "light-sky": "hsl(var(--light-sky))",
+        success: {
+          DEFAULT: "hsl(var(--success))",
+          foreground: "hsl(var(--success-foreground))",
+        },
+        warning: {
+          DEFAULT: "hsl(var(--warning))",
+          foreground: "hsl(var(--warning-foreground))",
+        },
         sidebar: {
           DEFAULT: "hsl(var(--sidebar-background))",
           foreground: "hsl(var(--sidebar-foreground))",
