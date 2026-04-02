@@ -6,19 +6,16 @@ import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 import { useToast } from "@/hooks/use-toast";
 import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
+import { ShellyStreamError, streamShellyResponse } from "@/lib/shelly-stream";
 
 const emotions = ["Joy", "Calm", "Anxiety", "Stress", "Tired", "Energetic"];
-const emotionColors: Record<string, string> = {
-  Joy: "bg-emerald-500", Calm: "bg-sky-500", Anxiety: "bg-amber-500",
-  Stress: "bg-rose-500", Tired: "bg-purple-500", Energetic: "bg-cyan-500",
-};
 
 const moodLevels = [
-  { label: "Very Low", color: "bg-rose-500" },
-  { label: "Low", color: "bg-orange-500" },
-  { label: "Moderate", color: "bg-amber-500" },
-  { label: "Good", color: "bg-emerald-500" },
-  { label: "Excellent", color: "bg-blue-500" },
+  { label: "Very Low", color: "bg-destructive" },
+  { label: "Low", color: "bg-warning" },
+  { label: "Moderate", color: "bg-secondary" },
+  { label: "Good", color: "bg-success" },
+  { label: "Excellent", color: "bg-primary" },
 ];
 
 const factors = ["Sleep quality", "Exercise", "Social interaction", "Work stress", "Diet quality"];
@@ -106,64 +103,64 @@ const MoodPage = () => {
       toast({ description: "Log at least 2 moods to analyze patterns." });
       return;
     }
+
     setIsAnalyzing(true);
+    setAnalysis("");
+
     try {
       const summary = entries
         .map((e) => `mood:${e.mood}/10, stress:${e.stress}/10, energy:${e.energy}/10, emotions:${e.emotions.join(",")}${e.note ? `, note: ${e.note}` : ""}`)
         .join("; ");
-      const resp = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/panda-chat`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
+
+      let streamedAnalysis = "";
+
+      await streamShellyResponse({
+        messages: [
+          {
+            role: "user",
+            content:
+              `Please respond only as a mental health support companion. Review this wellbeing check-in data, reflect back the emotional patterns you notice, and suggest 2 to 4 grounded coping steps without diagnosing anything: ${summary}`,
+          },
+        ],
+        onDelta: (chunk) => {
+          streamedAnalysis += chunk;
+          setAnalysis(streamedAnalysis);
         },
-        body: JSON.stringify({
-          messages: [{ role: "user", content: `Analyze my mood data and give brief personalized wellness advice: ${summary}` }],
-        }),
       });
-      let result = "";
-      const reader = resp.body?.getReader();
-      const decoder = new TextDecoder();
-      if (reader) {
-        let buf = "";
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          buf += decoder.decode(value, { stream: true });
-          let nl: number;
-          while ((nl = buf.indexOf("\n")) !== -1) {
-            let line = buf.slice(0, nl);
-            buf = buf.slice(nl + 1);
-            if (line.endsWith("\r")) line = line.slice(0, -1);
-            if (!line.startsWith("data: ")) continue;
-            const json = line.slice(6).trim();
-            if (json === "[DONE]") break;
-            try { const p = JSON.parse(json); const c = p.choices?.[0]?.delta?.content; if (c) result += c; } catch {}
-          }
-        }
+
+      if (!streamedAnalysis.trim()) {
+        throw new ShellyStreamError("No insight was returned.");
       }
-      setAnalysis(result || "Unable to analyze at this time.");
-    } catch {
-      toast({ variant: "destructive", title: "Error", description: "Could not analyze moods." });
-    } finally { setIsAnalyzing(false); }
+    } catch (error) {
+      console.error(error);
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: error instanceof ShellyStreamError ? error.message : "Could not analyze moods.",
+      });
+    } finally {
+      setIsAnalyzing(false);
+    }
   };
 
   return (
     <div className="min-h-screen bg-background flex flex-col">
       <Navbar />
-      <div className="flex-1 w-full max-w-7xl mx-auto px-4 py-8">
+      <div className="mx-auto w-full max-w-7xl flex-1 px-4 py-6 sm:px-6 sm:py-8">
         {/* Header */}
         <div className="mb-8">
-          <h1 className="text-3xl font-bold text-foreground mb-1">📊 Mood Tracking</h1>
-          <p className="text-muted-foreground">Monitor your emotional wellbeing and receive AI-powered insights to improve mental health.</p>
+          <h1 className="mb-1 text-2xl font-bold text-foreground sm:text-3xl">📊 Mood Tracking</h1>
+          <p className="max-w-2xl text-sm leading-7 text-muted-foreground sm:text-base">
+            Monitor your emotional wellbeing and receive AI-powered insights to improve mental health.
+          </p>
         </div>
 
-        <div className="flex flex-col lg:flex-row gap-6">
+        <div className="flex flex-col gap-6 xl:flex-row xl:gap-8">
           {/* Left column */}
           <div className="flex-1 min-w-0 space-y-6">
             {/* Mood Tracker with Chart */}
             <div className="bg-card border border-border rounded-2xl p-6">
-              <div className="flex items-center justify-between mb-2">
+              <div className="mb-2 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                   <h2 className="text-lg font-bold text-foreground">📈 Mood Tracker</h2>
                   <p className="text-xs text-muted-foreground">Track your emotional well-being over time</p>
@@ -171,7 +168,7 @@ const MoodPage = () => {
                 <span className="text-lg">📅</span>
               </div>
               {/* Chart tabs */}
-              <div className="flex gap-2 my-4">
+              <div className="my-4 flex flex-wrap gap-2">
                 {(["Mood", "Stress", "Energy"] as const).map((tab) => (
                   <button
                     key={tab}
@@ -184,7 +181,7 @@ const MoodPage = () => {
                   </button>
                 ))}
               </div>
-              <div className="h-48">
+              <div className="h-56 sm:h-64">
                 <ResponsiveContainer width="100%" height="100%">
                   <LineChart data={chartData}>
                     <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
@@ -196,7 +193,7 @@ const MoodPage = () => {
                 </ResponsiveContainer>
               </div>
               {/* Mood level legend */}
-              <div className="flex justify-between mt-4">
+              <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-5">
                 {moodLevels.map((l) => (
                   <div key={l.label} className="flex items-center gap-1 text-[10px] text-muted-foreground">
                     <span className={`w-2 h-2 rounded-full ${l.color}`} />
@@ -220,16 +217,16 @@ const MoodPage = () => {
                 <div>
                   <div className="flex justify-between text-sm mb-2">
                     <span className="font-medium text-foreground">Stress Level</span>
-                    <span className="text-rose-500 font-bold">{stressVal}/10</span>
+                    <span className="font-bold text-destructive">{stressVal}/10</span>
                   </div>
-                  <Slider value={[stressVal]} onValueChange={([v]) => setStressVal(v)} min={1} max={10} step={1} className="[&_[role=slider]]:bg-rose-500" />
+                  <Slider value={[stressVal]} onValueChange={([v]) => setStressVal(v)} min={1} max={10} step={1} className="[&_[role=slider]]:bg-destructive" />
                 </div>
                 <div>
                   <div className="flex justify-between text-sm mb-2">
                     <span className="font-medium text-foreground">Energy Level</span>
-                    <span className="text-emerald-600 font-bold">{energyVal}/10</span>
+                    <span className="font-bold text-success">{energyVal}/10</span>
                   </div>
-                  <Slider value={[energyVal]} onValueChange={([v]) => setEnergyVal(v)} min={1} max={10} step={1} className="[&_[role=slider]]:bg-emerald-500" />
+                  <Slider value={[energyVal]} onValueChange={([v]) => setEnergyVal(v)} min={1} max={10} step={1} className="[&_[role=slider]]:bg-success" />
                 </div>
               </div>
 
@@ -281,14 +278,14 @@ const MoodPage = () => {
                 </p>
               )}
               {entries.length >= 2 && (
-                <Button onClick={analyzePatterns} variant="outline" disabled={isAnalyzing} className="mt-3 rounded-full text-xs">
+                  <Button onClick={analyzePatterns} variant="outline" disabled={isAnalyzing} className="mt-3 rounded-full px-4 text-xs">
                   {isAnalyzing ? "Analyzing..." : "🔍 Analyze Patterns"}
                 </Button>
               )}
             </div>
 
             {/* Bottom row: Factor Analysis + Weekly Trends */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
               <div className="bg-card border border-border rounded-2xl p-5">
                 <h3 className="font-semibold text-foreground mb-4 flex items-center gap-2">📊 Emotional Factor Analysis</h3>
                 <div className="space-y-3">
@@ -313,7 +310,7 @@ const MoodPage = () => {
                       <XAxis dataKey="name" tick={{ fontSize: 10 }} />
                       <YAxis domain={[0, 10]} tick={{ fontSize: 10 }} />
                       <Bar dataKey="mood" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} />
-                      <Bar dataKey="stress" fill="#f43f5e" radius={[4, 4, 0, 0]} />
+                        <Bar dataKey="stress" fill="hsl(var(--destructive))" radius={[4, 4, 0, 0]} />
                     </BarChart>
                   </ResponsiveContainer>
                 </div>
@@ -322,20 +319,20 @@ const MoodPage = () => {
           </div>
 
           {/* Right sidebar */}
-          <div className="w-full lg:w-80 shrink-0 space-y-5">
+          <div className="w-full shrink-0 space-y-5 xl:w-80">
             {/* Monthly Overview */}
             <div className="bg-card border border-border rounded-2xl p-5">
               <h3 className="font-semibold text-foreground mb-4 flex items-center gap-2">📅 Monthly Overview</h3>
               <div className="space-y-3">
                 {[
-                  { label: "Average mood", value: `${avgMood}/10`, color: "bg-primary", pct: entries.length ? +avgMood * 10 : 0 },
-                  { label: "Stress levels", value: `${avgStress}/10`, color: "bg-rose-500", pct: entries.length ? +avgStress * 10 : 0 },
-                  { label: "Energy levels", value: `${avgEnergy}/10`, color: "bg-emerald-500", pct: entries.length ? +avgEnergy * 10 : 0 },
+                  { label: "Average mood", value: `${avgMood}/10`, color: "bg-primary", valueClass: "text-primary", pct: entries.length ? +avgMood * 10 : 0 },
+                  { label: "Stress levels", value: `${avgStress}/10`, color: "bg-destructive", valueClass: "text-destructive", pct: entries.length ? +avgStress * 10 : 0 },
+                  { label: "Energy levels", value: `${avgEnergy}/10`, color: "bg-success", valueClass: "text-success", pct: entries.length ? +avgEnergy * 10 : 0 },
                 ].map((item) => (
                   <div key={item.label}>
                     <div className="flex justify-between text-sm mb-1">
                       <span className="text-foreground">{item.label}</span>
-                      <span className="font-bold text-primary">{item.value}</span>
+                      <span className={`font-bold ${item.valueClass}`}>{item.value}</span>
                     </div>
                     <div className="h-2 bg-muted rounded-full overflow-hidden">
                       <div className={`h-full ${item.color} rounded-full transition-all`} style={{ width: `${item.pct}%` }} />
@@ -397,7 +394,7 @@ const MoodPage = () => {
                 <div className="space-y-3">
                   {entries.slice(0, 5).map((e, i) => (
                     <div key={i} className="flex items-start gap-2">
-                      <span className={`w-2 h-2 rounded-full mt-1.5 shrink-0 ${e.mood >= 7 ? "bg-emerald-500" : e.mood >= 4 ? "bg-amber-500" : "bg-rose-500"}`} />
+                      <span className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${e.mood >= 7 ? "bg-success" : e.mood >= 4 ? "bg-warning" : "bg-destructive"}`} />
                       <div className="min-w-0">
                         <p className="text-xs font-medium text-foreground">
                           {e.timestamp.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}

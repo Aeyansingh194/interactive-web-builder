@@ -51,21 +51,23 @@ const MeditationPage = () => {
   return (
     <div className="min-h-screen bg-background flex flex-col">
       <Navbar />
-      <div className="flex-1 flex flex-col items-center justify-center px-4 py-12">
-        <h1 className="text-2xl font-bold text-foreground mb-2">Meditation Hub</h1>
-        <p className="text-sm text-muted-foreground mb-12">Find calm through guided breathing and relaxation.</p>
+      <div className="flex flex-1 flex-col items-center justify-center px-4 py-10 sm:py-12">
+        <h1 className="mb-2 text-center text-3xl font-bold text-foreground sm:text-4xl">Meditation Hub</h1>
+        <p className="mb-10 max-w-xl text-center text-sm leading-7 text-muted-foreground sm:mb-12 sm:text-base">
+          Find calm through guided breathing and relaxation.
+        </p>
 
         {/* Breathing Circle */}
         <div className="relative mb-8">
           <motion.div
-            className="w-48 h-48 rounded-full bg-calm-lavender flex items-center justify-center"
+            className="flex h-40 w-40 items-center justify-center rounded-full bg-calm-lavender sm:h-48 sm:w-48"
             animate={isBreathing ? {
               scale: breathPhase === "inhale" ? 1.3 : breathPhase === "hold" ? 1.3 : 1,
             } : { scale: 1 }}
             transition={{ duration: 4, ease: "easeInOut" }}
           >
             <motion.div
-              className="w-32 h-32 rounded-full bg-soft-blue flex items-center justify-center"
+              className="flex h-28 w-28 items-center justify-center rounded-full bg-soft-blue sm:h-32 sm:w-32"
               animate={isBreathing ? {
                 scale: breathPhase === "inhale" ? 1.2 : breathPhase === "hold" ? 1.2 : 1,
               } : { scale: 1 }}
@@ -92,7 +94,7 @@ const MeditationPage = () => {
           )}
         </div>
 
-        <Button onClick={toggleBreathing} size="lg" className="rounded-full px-8 gap-2 mb-12">
+        <Button onClick={toggleBreathing} size="lg" className="mb-12 w-full max-w-sm gap-2 rounded-full px-8 sm:w-auto">
           {isBreathing ? (
             <MdSelfImprovement className="w-5 h-5" />
           ) : (
@@ -102,7 +104,7 @@ const MeditationPage = () => {
         </Button>
 
         {/* Wellness Tools */}
-        <div className="grid md:grid-cols-3 gap-4 max-w-2xl w-full">
+        <div className="grid w-full max-w-4xl grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {[
             { title: "Deep Relaxation", duration: "3 min", icon: <GiLotus className="w-6 h-6" />, bg: "bg-mint-green" },
             { title: "Calm Me Down", duration: "6 min", icon: <MdSelfImprovement className="w-6 h-6" />, bg: "bg-soft-yellow" },
@@ -110,7 +112,7 @@ const MeditationPage = () => {
           ].map((tool) => (
             <motion.div
               key={tool.title}
-              className={`${tool.bg} rounded-2xl p-6 cursor-pointer hover:shadow-md transition-shadow`}
+              className={`${tool.bg} cursor-pointer rounded-2xl p-5 transition-shadow hover:shadow-md sm:p-6`}
               whileHover={{ scale: 1.02 }}
               whileTap={{ scale: 0.98 }}
             >

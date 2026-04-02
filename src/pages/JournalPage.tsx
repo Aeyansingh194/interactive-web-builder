@@ -20,9 +20,9 @@ const prompts = [
 ];
 
 const moodConfig: Record<Mood, { emoji: string; label: string; color: string; dot: string }> = {
-  positive: { emoji: "😊", label: "Positive", color: "bg-emerald-100 text-emerald-700 border-emerald-300", dot: "bg-emerald-500" },
-  neutral: { emoji: "😐", label: "Neutral", color: "bg-amber-100 text-amber-700 border-amber-300", dot: "bg-amber-500" },
-  negative: { emoji: "😔", label: "Negative", color: "bg-rose-100 text-rose-700 border-rose-300", dot: "bg-rose-500" },
+  positive: { emoji: "😊", label: "Positive", color: "bg-success/10 text-success border-success/20", dot: "bg-success" },
+  neutral: { emoji: "😐", label: "Neutral", color: "bg-warning/10 text-warning border-warning/20", dot: "bg-warning" },
+  negative: { emoji: "😔", label: "Negative", color: "bg-destructive/10 text-destructive border-destructive/20", dot: "bg-destructive" },
 };
 
 const JournalPage = () => {
@@ -95,14 +95,16 @@ const JournalPage = () => {
   return (
     <div className="min-h-screen bg-background flex flex-col">
       <Navbar />
-      <div className="flex-1 w-full max-w-7xl mx-auto px-4 py-8">
+      <div className="mx-auto w-full max-w-7xl flex-1 px-4 py-6 sm:px-6 sm:py-8">
         {/* Header */}
         <div className="mb-8">
-          <h1 className="text-3xl font-bold text-foreground mb-1">📓 Reflection Journal</h1>
-          <p className="text-muted-foreground">Write about your thoughts and feelings to track your emotional wellbeing.</p>
+          <h1 className="mb-1 text-2xl font-bold text-foreground sm:text-3xl">📓 Reflection Journal</h1>
+          <p className="max-w-2xl text-sm leading-7 text-muted-foreground sm:text-base">
+            Write about your thoughts and feelings to track your emotional wellbeing.
+          </p>
         </div>
 
-        <div className="flex flex-col lg:flex-row gap-6">
+        <div className="flex flex-col gap-6 xl:flex-row xl:gap-8">
           {/* Left column - main content */}
           <div className="flex-1 min-w-0">
             {/* Search */}
@@ -115,11 +117,11 @@ const JournalPage = () => {
 
             {/* Today's Journal */}
             <motion.div
-              className="bg-card border border-border rounded-2xl p-6 mb-6 shadow-sm"
+              className="mb-6 rounded-2xl border border-border bg-card p-4 shadow-sm sm:p-6"
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
             >
-              <div className="flex items-center justify-between mb-4">
+              <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                 <h2 className="text-xl font-bold text-foreground">Today's Journal</h2>
                 <span className="text-sm text-muted-foreground flex items-center gap-1">
                   📅 {today.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}
@@ -139,7 +141,7 @@ const JournalPage = () => {
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
                 placeholder="Give this entry a title..."
-                className="border-none bg-transparent text-lg font-semibold placeholder:text-muted-foreground/50 focus-visible:ring-0 px-0 mb-3"
+                className="mb-3 border-none bg-transparent px-0 text-base font-semibold placeholder:text-muted-foreground/50 focus-visible:ring-0 sm:text-lg"
               />
 
               <textarea
@@ -157,14 +159,14 @@ const JournalPage = () => {
               {/* Mood Selector */}
               <div className="mt-5">
                 <p className="text-sm font-medium text-foreground mb-3">How are you feeling?</p>
-                <div className="flex gap-3">
+                <div className="grid gap-3 sm:grid-cols-3">
                   {(Object.keys(moodConfig) as Mood[]).map((m) => (
                     <button
                       key={m}
                       onClick={() => setMood(m)}
                       className={`flex-1 py-3 rounded-xl text-sm font-medium border transition-all ${
                         mood === m
-                          ? moodConfig[m].color + " ring-2 ring-offset-1"
+                          ? `${moodConfig[m].color} ring-2 ring-ring/20 ring-offset-1`
                           : "bg-card border-border text-muted-foreground hover:bg-muted"
                       }`}
                     >
@@ -185,12 +187,12 @@ const JournalPage = () => {
                 {filteredEntries.map((e, i) => (
                   <motion.div
                     key={e.date.getTime()}
-                    className="bg-card rounded-2xl border border-border mb-3 p-4 hover:shadow-sm transition-shadow"
+                    className="mb-3 rounded-2xl border border-border bg-card p-4 transition-shadow hover:shadow-sm sm:p-5"
                     initial={{ opacity: 0, y: 10 }}
                     animate={{ opacity: 1, y: 0 }}
                     exit={{ opacity: 0, x: -20 }}
                   >
-                    <div className="flex items-start justify-between gap-3">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                       <div className="flex items-start gap-3 min-w-0">
                         <div className={`w-2.5 h-2.5 rounded-full mt-1.5 shrink-0 ${moodConfig[e.mood].dot}`} />
                         <div className="min-w-0">
@@ -198,7 +200,7 @@ const JournalPage = () => {
                           <p className="text-xs text-muted-foreground line-clamp-2 mt-0.5">{e.text}</p>
                         </div>
                       </div>
-                      <div className="flex items-center gap-2 shrink-0">
+                      <div className="flex items-center justify-between gap-2 shrink-0 sm:justify-end">
                         <span className="text-[10px] text-muted-foreground whitespace-nowrap">
                           {e.date.toLocaleDateString()}
                         </span>
@@ -224,7 +226,7 @@ const JournalPage = () => {
           </div>
 
           {/* Right sidebar */}
-          <div className="w-full lg:w-80 shrink-0 space-y-5">
+          <div className="w-full shrink-0 space-y-5 xl:w-80">
             {/* Calendar */}
             <div className="bg-card border border-border rounded-2xl p-5">
               <h3 className="font-semibold text-foreground mb-4 flex items-center gap-2">📅 Journal Calendar</h3>
@@ -256,9 +258,9 @@ const JournalPage = () => {
                 })}
               </div>
               <div className="flex items-center justify-between mt-3 text-xs text-muted-foreground">
-                <button onClick={prevMonth} className="hover:text-foreground">← {new Date(year, month - 1).toLocaleString("default", { month: "short" })}</button>
+                <button onClick={prevMonth} className="rounded-full px-2 py-1 transition-colors hover:bg-muted hover:text-foreground">← {new Date(year, month - 1).toLocaleString("default", { month: "short" })}</button>
                 <span className="font-medium text-foreground">{monthName} {year}</span>
-                <button onClick={nextMonth} className="hover:text-foreground">{new Date(year, month + 1).toLocaleString("default", { month: "short" })} →</button>
+                <button onClick={nextMonth} className="rounded-full px-2 py-1 transition-colors hover:bg-muted hover:text-foreground">{new Date(year, month + 1).toLocaleString("default", { month: "short" })} →</button>
               </div>
             </div>
 
@@ -277,20 +279,20 @@ const JournalPage = () => {
                 </div>
                 <div>
                   <div className="flex justify-between text-sm mb-1">
-                    <span className="text-amber-600 font-medium">Current streak</span>
+                    <span className="font-medium text-warning">Current streak</span>
                     <span className="font-bold">{streak} days</span>
                   </div>
                   <div className="h-2 bg-muted rounded-full overflow-hidden">
-                    <div className="h-full bg-amber-500 rounded-full transition-all" style={{ width: `${Math.min(100, streak * 10)}%` }} />
+                    <div className="h-full rounded-full bg-warning transition-all" style={{ width: `${Math.min(100, streak * 10)}%` }} />
                   </div>
                 </div>
                 <div>
                   <div className="flex justify-between text-sm mb-1">
-                    <span className="text-emerald-600 font-medium">Mood trend</span>
-                    <span className="font-bold text-emerald-600">{moodTrend}</span>
+                    <span className="font-medium text-success">Mood trend</span>
+                    <span className="font-bold text-success">{moodTrend}</span>
                   </div>
                   <div className="h-2 bg-muted rounded-full overflow-hidden">
-                    <div className="h-full bg-emerald-500 rounded-full" style={{ width: moodTrend === "Improving" ? "80%" : "50%" }} />
+                    <div className="h-full rounded-full bg-success" style={{ width: moodTrend === "Improving" ? "80%" : "50%" }} />
                   </div>
                 </div>
               </div>

@@ -8,10 +8,10 @@ import Footer from "@/components/Footer";
 import ReactMarkdown from "react-markdown";
 import shellyHappy from "@/assets/shelly-happy.png";
 import { useToast } from "@/hooks/use-toast";
+import { ShellyStreamError, streamShellyResponse } from "@/lib/shelly-stream";
 
 type Msg = { role: "user" | "assistant"; content: string };
 
-const CHAT_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/panda-chat`;
 const STORAGE_KEY = "panda-chat-history";
 const MAX_HISTORY = 50;
 
@@ -55,71 +55,43 @@ const ChatPage = () => {
   const send = async () => {
     if (!input.trim() || isLoading) return;
     const userMsg: Msg = { role: "user", content: input.trim() };
+    const allMessages = [...messages, userMsg].slice(-MAX_HISTORY);
+
     setInput("");
     setMessages((prev) => [...prev, userMsg]);
     setIsLoading(true);
 
     let assistantSoFar = "";
-    const allMessages = [...messages, userMsg];
 
     try {
-      const resp = await fetch(CHAT_URL, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
+      await streamShellyResponse({
+        messages: allMessages,
+        onDelta: (content) => {
+          assistantSoFar += content;
+          setMessages((prev) => {
+            const last = prev[prev.length - 1];
+
+            if (last?.role === "assistant") {
+              return prev.map((message, index) =>
+                index === prev.length - 1 ? { ...message, content: assistantSoFar } : message,
+              );
+            }
+
+            return [...prev, { role: "assistant", content: assistantSoFar }];
+          });
         },
-        body: JSON.stringify({ messages: allMessages }),
       });
 
-      if (resp.status === 429) {
-        toast({ variant: "destructive", title: "Rate limit", description: "Too many requests. Please wait." });
-        setIsLoading(false);
-        return;
-      }
-      if (resp.status === 402) {
-        toast({ variant: "destructive", title: "Credits needed", description: "Please add credits." });
-        setIsLoading(false);
-        return;
-      }
-      if (!resp.ok || !resp.body) throw new Error("Failed to start stream");
-
-      const reader = resp.body.getReader();
-      const decoder = new TextDecoder();
-      let buf = "";
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buf += decoder.decode(value, { stream: true });
-
-        let nl: number;
-        while ((nl = buf.indexOf("\n")) !== -1) {
-          let line = buf.slice(0, nl);
-          buf = buf.slice(nl + 1);
-          if (line.endsWith("\r")) line = line.slice(0, -1);
-          if (!line.startsWith("data: ")) continue;
-          const json = line.slice(6).trim();
-          if (json === "[DONE]") break;
-          try {
-            const parsed = JSON.parse(json);
-            const content = parsed.choices?.[0]?.delta?.content;
-            if (content) {
-              assistantSoFar += content;
-              setMessages((prev) => {
-                const last = prev[prev.length - 1];
-                if (last?.role === "assistant") {
-                  return prev.map((m, i) => (i === prev.length - 1 ? { ...m, content: assistantSoFar } : m));
-                }
-                return [...prev, { role: "assistant", content: assistantSoFar }];
-              });
-            }
-          } catch {}
-        }
+      if (!assistantSoFar.trim()) {
+        throw new ShellyStreamError("Shelly could not finish the reply.");
       }
     } catch (e) {
       console.error(e);
-      toast({ variant: "destructive", title: "Error", description: "Could not reach AI." });
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: e instanceof ShellyStreamError ? e.message : "Could not reach Shelly.",
+      });
     } finally {
       setIsLoading(false);
     }
@@ -128,25 +100,33 @@ const ChatPage = () => {
   return (
     <div className="min-h-screen bg-background flex flex-col">
       <Navbar />
-      <div className="flex-1 flex flex-col max-w-3xl mx-auto w-full px-4 py-6">
-        <div className="flex items-center gap-3 mb-6">
-          <img src={shellyHappy} alt="Shelly" className="w-10 h-10" />
+      <div className="mx-auto flex w-full max-w-4xl flex-1 flex-col px-4 py-5 sm:px-6 sm:py-6">
+        <div className="mb-4 flex flex-wrap items-center gap-3 sm:mb-6">
+          <img src={shellyHappy} alt="Shelly" className="h-10 w-10 sm:h-12 sm:w-12" />
           <div className="flex-1">
-            <h1 className="font-bold text-foreground">Shelly Chat</h1>
-            <p className="text-xs text-muted-foreground">Your AI wellness companion</p>
+            <h1 className="text-lg font-bold text-foreground sm:text-xl">Shelly Chat</h1>
+            <p className="text-xs text-muted-foreground sm:text-sm">Support for emotions, stress, and mental wellbeing</p>
           </div>
           {messages.length > 0 && (
-            <button onClick={clearHistory} className="text-xs text-muted-foreground hover:text-foreground transition-colors underline">
+            <button
+              onClick={clearHistory}
+              className="text-xs text-muted-foreground transition-colors hover:text-foreground underline-offset-4 hover:underline"
+            >
               Clear chat
             </button>
           )}
         </div>
 
-        <div ref={scrollRef} className="flex-1 overflow-y-auto space-y-4 mb-4 max-h-[60vh] pr-2">
+        <div
+          ref={scrollRef}
+          className="mb-4 max-h-[58vh] flex-1 space-y-4 overflow-y-auto rounded-[2rem] border border-border bg-card/40 p-3 pr-2 sm:mb-5 sm:max-h-[60vh] sm:p-4"
+        >
           {messages.length === 0 && (
-            <div className="text-center py-20 space-y-4">
-              <img src={shellyHappy} alt="Shelly" className="w-24 mx-auto" />
-              <p className="text-muted-foreground">Hi! I'm Shelly — How are you feeling today?</p>
+            <div className="space-y-4 py-16 text-center sm:py-20">
+              <img src={shellyHappy} alt="Shelly" className="mx-auto w-24 sm:w-28" />
+              <p className="mx-auto max-w-md text-sm leading-7 text-muted-foreground sm:text-base">
+                Hi, I&apos;m Shelly — tell me what you&apos;re feeling, what&apos;s weighing on you, or where you need support today.
+              </p>
             </div>
           )}
           {messages.map((msg, i) => (
@@ -157,14 +137,14 @@ const ChatPage = () => {
               animate={{ opacity: 1, y: 0 }}
             >
               <div
-                className={`max-w-[80%] rounded-2xl px-4 py-3 text-sm ${
+                className={`max-w-[88%] rounded-2xl px-3.5 py-3 text-sm sm:max-w-[80%] sm:px-4 ${
                   msg.role === "user"
                     ? "bg-primary text-primary-foreground rounded-br-sm"
                     : "bg-card text-card-foreground shadow-sm border border-border rounded-bl-sm"
                 }`}
               >
                 {msg.role === "assistant" ? (
-                  <div className="prose prose-sm max-w-none">
+                  <div className="prose prose-sm max-w-none break-words text-foreground">
                     <ReactMarkdown>{msg.content}</ReactMarkdown>
                   </div>
                 ) : (
@@ -182,16 +162,16 @@ const ChatPage = () => {
           )}
         </div>
 
-        <div className="flex gap-2 items-center">
+        <div className="flex items-center gap-2">
           <Input
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && send()}
-            placeholder="Tell Shelly how you're feeling..."
-            className="rounded-full"
+            placeholder="Ask Shelly about stress, emotions, or self-care..."
+            className="h-12 rounded-full px-4 text-sm sm:text-base"
             disabled={isLoading}
           />
-          <Button onClick={send} disabled={isLoading} size="icon" className="rounded-full shrink-0">
+          <Button onClick={send} disabled={isLoading} size="icon" className="h-12 w-12 rounded-full shrink-0">
             <Send className="w-4 h-4" />
           </Button>
         </div>
