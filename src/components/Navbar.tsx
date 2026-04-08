@@ -1,6 +1,6 @@
 import { useState } from "react";
-import { Link, useLocation } from "react-router-dom";
-import { Menu } from "lucide-react";
+import { Link, useLocation, useNavigate } from "react-router-dom";
+import { Menu, LogOut, LogIn } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Sheet,
@@ -10,6 +10,7 @@ import {
   SheetTrigger,
 } from "@/components/ui/sheet";
 import shellyIdle from "@/assets/shelly-idle.png";
+import { useAuth } from "@/contexts/AuthContext";
 
 const navItems = [
   { to: "/", label: "Home" },
@@ -23,6 +24,13 @@ const navItems = [
 const Navbar = () => {
   const [open, setOpen] = useState(false);
   const location = useLocation();
+  const navigate = useNavigate();
+  const { user, signOut } = useAuth();
+
+  const handleSignOut = async () => {
+    await signOut();
+    navigate("/auth");
+  };
 
   return (
     <nav className="sticky top-0 z-50 border-b border-border bg-background/90 backdrop-blur-md supports-[backdrop-filter]:bg-background/80">
@@ -52,9 +60,15 @@ const Navbar = () => {
         </div>
 
         <div className="flex items-center gap-2">
-          <Button asChild className="hidden rounded-full px-4 sm:inline-flex lg:px-6">
-            <Link to="/chat">Chat With Shelly</Link>
-          </Button>
+          {user ? (
+            <Button variant="ghost" size="sm" className="hidden gap-1 rounded-full sm:inline-flex" onClick={handleSignOut}>
+              <LogOut className="h-4 w-4" /> Sign Out
+            </Button>
+          ) : (
+            <Button asChild className="hidden rounded-full px-4 sm:inline-flex lg:px-6">
+              <Link to="/auth">Sign In</Link>
+            </Button>
+          )}
 
           <Sheet open={open} onOpenChange={setOpen}>
             <SheetTrigger asChild>
@@ -81,11 +95,17 @@ const Navbar = () => {
                   </Button>
                 ))}
 
-                <Button asChild className="mt-4 w-full rounded-full">
-                  <Link to="/chat" onClick={() => setOpen(false)}>
-                    Chat With Shelly
-                  </Link>
-                </Button>
+                {user ? (
+                  <Button variant="destructive" className="mt-4 w-full rounded-full" onClick={() => { handleSignOut(); setOpen(false); }}>
+                    Sign Out
+                  </Button>
+                ) : (
+                  <Button asChild className="mt-4 w-full rounded-full">
+                    <Link to="/auth" onClick={() => setOpen(false)}>
+                      Sign In
+                    </Link>
+                  </Button>
+                )}
               </div>
             </SheetContent>
           </Sheet>
