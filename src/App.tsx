@@ -3,33 +3,38 @@ import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { AuthProvider } from "@/contexts/AuthContext";
 import Index from "./pages/Index";
 import ChatPage from "./pages/ChatPage";
 import VoicePage from "./pages/VoicePage";
 import MoodPage from "./pages/MoodPage";
 import JournalPage from "./pages/JournalPage";
 import MeditationPage from "./pages/MeditationPage";
+import AuthPage from "./pages/AuthPage";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
 
 const App = () => (
   <QueryClientProvider client={queryClient}>
-    <TooltipProvider>
-      <Toaster />
-      <Sonner />
-      <BrowserRouter>
-        <Routes>
-          <Route path="/" element={<Index />} />
-          <Route path="/chat" element={<ChatPage />} />
-          <Route path="/voice" element={<VoicePage />} />
-          <Route path="/mood" element={<MoodPage />} />
-          <Route path="/journal" element={<JournalPage />} />
-          <Route path="/meditation" element={<MeditationPage />} />
-          <Route path="*" element={<NotFound />} />
-        </Routes>
-      </BrowserRouter>
-    </TooltipProvider>
+    <AuthProvider>
+      <TooltipProvider>
+        <Toaster />
+        <Sonner />
+        <BrowserRouter>
+          <Routes>
+            <Route path="/" element={<Index />} />
+            <Route path="/auth" element={<AuthPage />} />
+            <Route path="/chat" element={<ChatPage />} />
+            <Route path="/voice" element={<VoicePage />} />
+            <Route path="/mood" element={<MoodPage />} />
+            <Route path="/journal" element={<JournalPage />} />
+            <Route path="/meditation" element={<MeditationPage />} />
+            <Route path="*" element={<NotFound />} />
+          </Routes>
+        </BrowserRouter>
+      </TooltipProvider>
+    </AuthProvider>
   </QueryClientProvider>
 );
 
