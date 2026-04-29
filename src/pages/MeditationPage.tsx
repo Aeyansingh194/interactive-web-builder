@@ -3,8 +3,19 @@ import { motion, AnimatePresence } from "framer-motion";
 import { GiMeditation, GiLotus, GiSoundWaves } from "react-icons/gi";
 import { MdSelfImprovement } from "react-icons/md";
 import { IoLeafOutline, IoClose } from "react-icons/io5";
+import { Headphones } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 
@@ -43,34 +54,7 @@ const playBreathSound = (ctx: AudioContext, type: "inhale" | "exhale") => {
   }
 };
 
-const playBinauralBeat = (ctx: AudioContext, baseFreq: number, beatFreq: number) => {
-  const oscL = ctx.createOscillator();
-  const oscR = ctx.createOscillator();
-  const gainL = ctx.createGain();
-  const gainR = ctx.createGain();
-  const merger = ctx.createChannelMerger(2);
-
-  oscL.frequency.value = baseFreq;
-  oscR.frequency.value = baseFreq + beatFreq;
-  oscL.type = "sine";
-  oscR.type = "sine";
-
-  gainL.gain.value = 0.1;
-  gainR.gain.value = 0.1;
-
-  oscL.connect(gainL);
-  oscR.connect(gainR);
-  gainL.connect(merger, 0, 0);
-  gainR.connect(merger, 0, 1);
-  merger.connect(ctx.destination);
-
-  oscL.start();
-  oscR.start();
-
-  return { stop: () => { oscL.stop(); oscR.stop(); } };
-};
-
-// --- Session configurations ---
+// --- Breathing session configurations ---
 type SessionConfig = {
   title: string;
   durationSec: number;
@@ -109,32 +93,24 @@ const SESSIONS: Record<string, SessionConfig> = {
     ],
     description: "5-5-5 calming breath for 6 minutes",
   },
-  binaural: {
-    title: "Binaural Beats",
-    durationSec: 600,
-    phases: [
-      { name: "inhale", duration: 6000 },
-      { name: "hold", duration: 2000 },
-      { name: "exhale", duration: 6000 },
-    ],
-    description: "Alpha-wave binaural beats with gentle breathing for 10 minutes",
-  },
 };
+
+const BINAURAL_VIDEO_ID = "1_G60OdEzXs";
 
 const MeditationPage = () => {
   const [activeSession, setActiveSession] = useState<string | null>(null);
   const [breathPhase, setBreathPhase] = useState<"inhale" | "hold" | "exhale">("inhale");
   const [phaseCountdown, setPhaseCountdown] = useState(4);
   const [totalElapsed, setTotalElapsed] = useState(0);
+  const [binauralPlaying, setBinauralPlaying] = useState(false);
+  const [showHeadphoneAlert, setShowHeadphoneAlert] = useState(false);
   const audioCtxRef = useRef<AudioContext | null>(null);
-  const binauralRef = useRef<{ stop: () => void } | null>(null);
 
   const session = activeSession ? SESSIONS[activeSession] : null;
   const cycleDuration = session
     ? session.phases.reduce((sum, p) => sum + p.duration, 0) / 1000
     : 12;
 
-  // Calculate progress for timed sessions
   const progress = session && session.durationSec > 0
     ? Math.min((totalElapsed / session.durationSec) * 100, 100)
     : 0;
@@ -151,8 +127,6 @@ const MeditationPage = () => {
     setTotalElapsed(0);
     setBreathPhase("inhale");
     setPhaseCountdown(4);
-    binauralRef.current?.stop();
-    binauralRef.current = null;
     if (audioCtxRef.current) {
       audioCtxRef.current.close();
       audioCtxRef.current = null;
@@ -163,16 +137,10 @@ const MeditationPage = () => {
   useEffect(() => {
     if (!activeSession || !session) return;
 
-    // Init audio
     if (!audioCtxRef.current) {
       audioCtxRef.current = createAudioContext();
     }
     const ctx = audioCtxRef.current;
-
-    // Start binaural for that session
-    if (activeSession === "binaural" && !binauralRef.current) {
-      binauralRef.current = playBinauralBeat(ctx, 200, 10);
-    }
 
     let phaseIdx = 0;
     let phaseTimer: ReturnType<typeof setTimeout>;
@@ -184,12 +152,10 @@ const MeditationPage = () => {
       const phaseSec = currentPhase.duration / 1000;
       setPhaseCountdown(phaseSec);
 
-      // Play sound on inhale/exhale
       if (currentPhase.name === "inhale" || currentPhase.name === "exhale") {
         playBreathSound(ctx, currentPhase.name);
       }
 
-      // Countdown within phase
       let remaining = phaseSec;
       countdownInterval = setInterval(() => {
         remaining--;
@@ -205,7 +171,6 @@ const MeditationPage = () => {
 
     startPhase();
 
-    // Total elapsed timer
     const elapsedInterval = setInterval(() => {
       setTotalElapsed((t) => t + 1);
     }, 1000);
@@ -217,7 +182,6 @@ const MeditationPage = () => {
     };
   }, [activeSession, session]);
 
-  // Auto-stop timed sessions
   useEffect(() => {
     if (session && session.durationSec > 0 && totalElapsed >= session.durationSec) {
       stopSession();
@@ -227,6 +191,20 @@ const MeditationPage = () => {
   const startSession = (key: string) => {
     stopSession();
     setTimeout(() => setActiveSession(key), 50);
+  };
+
+  const handleBinauralClick = () => {
+    if (binauralPlaying) {
+      setBinauralPlaying(false);
+      return;
+    }
+    setShowHeadphoneAlert(true);
+  };
+
+  const confirmBinaural = () => {
+    setShowHeadphoneAlert(false);
+    stopSession();
+    setBinauralPlaying(true);
   };
 
   const isActive = activeSession !== null;
@@ -344,13 +322,6 @@ const MeditationPage = () => {
               icon: <MdSelfImprovement className="w-6 h-6" />,
               bg: "bg-soft-yellow",
             },
-            {
-              key: "binaural",
-              title: "Binaural Beats",
-              duration: "10 min",
-              icon: <GiSoundWaves className="w-6 h-6" />,
-              bg: "bg-peach",
-            },
           ].map((tool) => (
             <motion.div
               key={tool.key}
@@ -369,9 +340,71 @@ const MeditationPage = () => {
               )}
             </motion.div>
           ))}
+
+          {/* Binaural Beats card — plays YouTube music */}
+          <motion.div
+            onClick={handleBinauralClick}
+            className={`bg-peach cursor-pointer rounded-2xl p-5 transition-shadow hover:shadow-md sm:p-6 ${binauralPlaying ? "ring-2 ring-primary" : ""}`}
+            whileHover={{ scale: 1.02 }}
+            whileTap={{ scale: 0.98 }}
+          >
+            <div className="flex items-center gap-3 mb-2">
+              <GiSoundWaves className="w-6 h-6" />
+              <span className="text-xs text-muted-foreground">Music</span>
+            </div>
+            <p className="font-medium text-sm text-foreground">Binaural Beats</p>
+            <p className="text-xs text-muted-foreground mt-1">
+              {binauralPlaying ? "● Now playing — tap to stop" : "Headphones recommended 🎧"}
+            </p>
+          </motion.div>
         </div>
+
+        {/* Embedded YouTube player for binaural beats */}
+        {binauralPlaying && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="mt-8 w-full max-w-2xl"
+          >
+            <div className="overflow-hidden rounded-2xl shadow-lg">
+              <iframe
+                width="100%"
+                height="280"
+                src={`https://www.youtube.com/embed/${BINAURAL_VIDEO_ID}?autoplay=1&rel=0`}
+                title="Binaural Beats"
+                allow="autoplay; encrypted-media"
+                allowFullScreen
+                className="w-full"
+              />
+            </div>
+            <p className="mt-3 flex items-center justify-center gap-2 text-xs text-muted-foreground">
+              <Headphones className="w-4 h-4" />
+              For best experience, use headphones or earphones.
+            </p>
+          </motion.div>
+        )}
       </div>
       <Footer />
+
+      {/* Headphone alert before binaural */}
+      <AlertDialog open={showHeadphoneAlert} onOpenChange={setShowHeadphoneAlert}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <Headphones className="w-5 h-5 text-primary" />
+              Use headphones for the best experience
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              Binaural beats work by playing slightly different frequencies in each ear.
+              Please put on your headphones or earphones before starting for the full effect 🎧
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmBinaural}>I'm ready, play</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 };
