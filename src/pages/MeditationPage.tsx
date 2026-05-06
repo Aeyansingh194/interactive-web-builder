@@ -96,15 +96,50 @@ const SESSIONS: Record<string, SessionConfig> = {
 };
 
 const BINAURAL_VIDEO_ID = "1_G60OdEzXs";
+const STORAGE_KEY = "meditation-progress-v1";
+
+type SavedProgress = {
+  activeSession: string | null;
+  totalElapsed: number;
+  binauralPlaying: boolean;
+};
+
+const loadProgress = (): SavedProgress => {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return { activeSession: null, totalElapsed: 0, binauralPlaying: false };
+    const parsed = JSON.parse(raw) as SavedProgress;
+    return {
+      activeSession: parsed.activeSession ?? null,
+      totalElapsed: parsed.totalElapsed ?? 0,
+      binauralPlaying: parsed.binauralPlaying ?? false,
+    };
+  } catch {
+    return { activeSession: null, totalElapsed: 0, binauralPlaying: false };
+  }
+};
 
 const MeditationPage = () => {
-  const [activeSession, setActiveSession] = useState<string | null>(null);
+  const initial = typeof window !== "undefined" ? loadProgress() : { activeSession: null, totalElapsed: 0, binauralPlaying: false };
+  const [activeSession, setActiveSession] = useState<string | null>(initial.activeSession);
   const [breathPhase, setBreathPhase] = useState<"inhale" | "hold" | "exhale">("inhale");
   const [phaseCountdown, setPhaseCountdown] = useState(4);
-  const [totalElapsed, setTotalElapsed] = useState(0);
-  const [binauralPlaying, setBinauralPlaying] = useState(false);
+  const [totalElapsed, setTotalElapsed] = useState(initial.totalElapsed);
+  const [binauralPlaying, setBinauralPlaying] = useState(initial.binauralPlaying);
   const [showHeadphoneAlert, setShowHeadphoneAlert] = useState(false);
   const audioCtxRef = useRef<AudioContext | null>(null);
+
+  // Persist progress on every relevant change
+  useEffect(() => {
+    try {
+      localStorage.setItem(
+        STORAGE_KEY,
+        JSON.stringify({ activeSession, totalElapsed, binauralPlaying }),
+      );
+    } catch {
+      /* ignore */
+    }
+  }, [activeSession, totalElapsed, binauralPlaying]);
 
   const session = activeSession ? SESSIONS[activeSession] : null;
   const cycleDuration = session
@@ -189,8 +224,13 @@ const MeditationPage = () => {
   }, [totalElapsed, session, stopSession]);
 
   const startSession = (key: string) => {
+    setBinauralPlaying(false);
     stopSession();
     setTimeout(() => setActiveSession(key), 50);
+  };
+
+  const stopBinaural = () => {
+    setBinauralPlaying(false);
   };
 
   const handleBinauralClick = () => {
@@ -377,10 +417,21 @@ const MeditationPage = () => {
                 className="w-full"
               />
             </div>
-            <p className="mt-3 flex items-center justify-center gap-2 text-xs text-muted-foreground">
-              <Headphones className="w-4 h-4" />
-              For best experience, use headphones or earphones.
-            </p>
+            <div className="mt-4 flex flex-col items-center gap-3">
+              <Button
+                onClick={stopBinaural}
+                size="lg"
+                variant="destructive"
+                className="gap-2 rounded-full px-8"
+              >
+                <IoClose className="w-5 h-5" />
+                Stop Binaural Beats
+              </Button>
+              <p className="flex items-center justify-center gap-2 text-xs text-muted-foreground">
+                <Headphones className="w-4 h-4" />
+                For best experience, use headphones or earphones.
+              </p>
+            </div>
           </motion.div>
         )}
       </div>
