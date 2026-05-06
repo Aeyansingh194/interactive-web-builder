@@ -224,8 +224,13 @@ const MeditationPage = () => {
   }, [totalElapsed, session, stopSession]);
 
   const startSession = (key: string) => {
+    setBinauralPlaying(false);
     stopSession();
     setTimeout(() => setActiveSession(key), 50);
+  };
+
+  const stopBinaural = () => {
+    setBinauralPlaying(false);
   };
 
   const handleBinauralClick = () => {
