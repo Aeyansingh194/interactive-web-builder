@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { GiMeditation, GiLotus, GiSoundWaves } from "react-icons/gi";
 import { MdSelfImprovement } from "react-icons/md";
 import { IoLeafOutline, IoClose } from "react-icons/io5";
-import { Headphones } from "lucide-react";
+import { Headphones, Play, RotateCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import {
@@ -18,6 +18,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
+import { toast } from "sonner";
 
 // --- Audio helpers using Web Audio API (no files needed) ---
 const createAudioContext = () => {
@@ -54,18 +55,18 @@ const playBreathSound = (ctx: AudioContext, type: "inhale" | "exhale") => {
   }
 };
 
-// --- Breathing session configurations ---
+type PhaseName = "inhale" | "hold" | "exhale";
 type SessionConfig = {
   title: string;
   durationSec: number;
-  phases: { name: "inhale" | "hold" | "exhale"; duration: number }[];
+  phases: { name: PhaseName; duration: number }[];
   description: string;
 };
 
 const SESSIONS: Record<string, SessionConfig> = {
   breathing: {
     title: "Breathing Exercise",
-    durationSec: 0, // unlimited
+    durationSec: 0,
     phases: [
       { name: "inhale", duration: 4000 },
       { name: "hold", duration: 4000 },
@@ -96,142 +97,246 @@ const SESSIONS: Record<string, SessionConfig> = {
 };
 
 const BINAURAL_VIDEO_ID = "1_G60OdEzXs";
-const STORAGE_KEY = "meditation-progress-v1";
+const STORAGE_KEY = "meditation-progress-v2";
 
 type SavedProgress = {
   activeSession: string | null;
   totalElapsed: number;
   binauralPlaying: boolean;
+  phaseIdx: number;
+  phaseRemainingMs: number;
+};
+
+const EMPTY: SavedProgress = {
+  activeSession: null,
+  totalElapsed: 0,
+  binauralPlaying: false,
+  phaseIdx: 0,
+  phaseRemainingMs: 0,
 };
 
 const loadProgress = (): SavedProgress => {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return { activeSession: null, totalElapsed: 0, binauralPlaying: false };
-    const parsed = JSON.parse(raw) as SavedProgress;
-    return {
-      activeSession: parsed.activeSession ?? null,
-      totalElapsed: parsed.totalElapsed ?? 0,
-      binauralPlaying: parsed.binauralPlaying ?? false,
-    };
+    if (!raw) return EMPTY;
+    const parsed = JSON.parse(raw) as Partial<SavedProgress>;
+    return { ...EMPTY, ...parsed };
   } catch {
-    return { activeSession: null, totalElapsed: 0, binauralPlaying: false };
+    return EMPTY;
   }
 };
 
 const MeditationPage = () => {
-  const initial = typeof window !== "undefined" ? loadProgress() : { activeSession: null, totalElapsed: 0, binauralPlaying: false };
+  const initial = typeof window !== "undefined" ? loadProgress() : EMPTY;
+
+  // running = is the breathing loop actively executing
+  const [running, setRunning] = useState(false);
   const [activeSession, setActiveSession] = useState<string | null>(initial.activeSession);
-  const [breathPhase, setBreathPhase] = useState<"inhale" | "hold" | "exhale">("inhale");
-  const [phaseCountdown, setPhaseCountdown] = useState(4);
+  const [phaseIdx, setPhaseIdx] = useState(initial.phaseIdx);
+  const [phaseRemainingMs, setPhaseRemainingMs] = useState(initial.phaseRemainingMs);
   const [totalElapsed, setTotalElapsed] = useState(initial.totalElapsed);
   const [binauralPlaying, setBinauralPlaying] = useState(initial.binauralPlaying);
   const [showHeadphoneAlert, setShowHeadphoneAlert] = useState(false);
-  const audioCtxRef = useRef<AudioContext | null>(null);
 
-  // Persist progress on every relevant change
+  const audioCtxRef = useRef<AudioContext | null>(null);
+  const phaseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const tickRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const phaseStartedAtRef = useRef<number>(0);
+  const phaseDurationRef = useRef<number>(0);
+
+  const session = activeSession ? SESSIONS[activeSession] : null;
+  const currentPhase: PhaseName = session
+    ? session.phases[phaseIdx % session.phases.length].name
+    : "inhale";
+  const phaseCountdown = Math.max(0, Math.ceil(phaseRemainingMs / 1000));
+  const cycleDuration = session
+    ? session.phases.reduce((sum, p) => sum + p.duration, 0) / 1000
+    : 12;
+  const progress =
+    session && session.durationSec > 0
+      ? Math.min((totalElapsed / session.durationSec) * 100, 100)
+      : 0;
+  const remainingTime =
+    session && session.durationSec > 0 ? Math.max(session.durationSec - totalElapsed, 0) : 0;
+  const formatTime = (s: number) =>
+    `${Math.floor(s / 60)}:${(s % 60).toString().padStart(2, "0")}`;
+
+  const hasSavedSession = !!activeSession;
+  const isActive = running && hasSavedSession;
+
+  // Persist on every relevant change
   useEffect(() => {
     try {
       localStorage.setItem(
         STORAGE_KEY,
-        JSON.stringify({ activeSession, totalElapsed, binauralPlaying }),
+        JSON.stringify({
+          activeSession,
+          totalElapsed,
+          binauralPlaying,
+          phaseIdx,
+          phaseRemainingMs,
+        } satisfies SavedProgress),
       );
     } catch {
       /* ignore */
     }
-  }, [activeSession, totalElapsed, binauralPlaying]);
+  }, [activeSession, totalElapsed, binauralPlaying, phaseIdx, phaseRemainingMs]);
 
-  const session = activeSession ? SESSIONS[activeSession] : null;
-  const cycleDuration = session
-    ? session.phases.reduce((sum, p) => sum + p.duration, 0) / 1000
-    : 12;
+  const clearAllTimers = useCallback(() => {
+    if (phaseTimerRef.current) clearTimeout(phaseTimerRef.current);
+    if (tickRef.current) clearInterval(tickRef.current);
+    phaseTimerRef.current = null;
+    tickRef.current = null;
+  }, []);
 
-  const progress = session && session.durationSec > 0
-    ? Math.min((totalElapsed / session.durationSec) * 100, 100)
-    : 0;
-
-  const formatTime = (s: number) =>
-    `${Math.floor(s / 60)}:${(s % 60).toString().padStart(2, "0")}`;
-
-  const remainingTime = session && session.durationSec > 0
-    ? Math.max(session.durationSec - totalElapsed, 0)
-    : 0;
-
-  const stopSession = useCallback(() => {
-    setActiveSession(null);
-    setTotalElapsed(0);
-    setBreathPhase("inhale");
-    setPhaseCountdown(4);
+  const closeAudio = useCallback(() => {
     if (audioCtxRef.current) {
-      audioCtxRef.current.close();
+      try {
+        audioCtxRef.current.close();
+      } catch {
+        /* ignore */
+      }
       audioCtxRef.current = null;
     }
   }, []);
 
-  // Main breathing cycle
-  useEffect(() => {
-    if (!activeSession || !session) return;
-
-    if (!audioCtxRef.current) {
-      audioCtxRef.current = createAudioContext();
+  // Pause (stop the running loop) but keep saved state for resume
+  const pauseRunning = useCallback(() => {
+    // Save current remaining ms before clearing
+    if (running && phaseStartedAtRef.current) {
+      const elapsedInPhase = Date.now() - phaseStartedAtRef.current;
+      const left = Math.max(phaseDurationRef.current - elapsedInPhase, 0);
+      setPhaseRemainingMs(left);
     }
+    clearAllTimers();
+    closeAudio();
+    setRunning(false);
+  }, [running, clearAllTimers, closeAudio]);
+
+  // Stop session entirely (clears active)
+  const stopSession = useCallback(() => {
+    clearAllTimers();
+    closeAudio();
+    setRunning(false);
+    setActiveSession(null);
+    setTotalElapsed(0);
+    setPhaseIdx(0);
+    setPhaseRemainingMs(0);
+  }, [clearAllTimers, closeAudio]);
+
+  // Reset progress: stops everything (including binaural), clears storage
+  const resetProgress = useCallback(() => {
+    clearAllTimers();
+    closeAudio();
+    setRunning(false);
+    setActiveSession(null);
+    setTotalElapsed(0);
+    setPhaseIdx(0);
+    setPhaseRemainingMs(0);
+    setBinauralPlaying(false);
+    try {
+      localStorage.removeItem(STORAGE_KEY);
+    } catch {
+      /* ignore */
+    }
+    toast.success("Progress reset", { description: "All meditation state cleared." });
+  }, [clearAllTimers, closeAudio]);
+
+  // Pause on unmount (so saved state matches when navigating away)
+  useEffect(() => {
+    return () => {
+      if (phaseTimerRef.current) clearTimeout(phaseTimerRef.current);
+      if (tickRef.current) clearInterval(tickRef.current);
+      if (audioCtxRef.current) {
+        try {
+          audioCtxRef.current.close();
+        } catch {
+          /* ignore */
+        }
+      }
+    };
+  }, []);
+
+  // Drive the breathing loop while running
+  useEffect(() => {
+    if (!running || !session) return;
+
+    if (!audioCtxRef.current) audioCtxRef.current = createAudioContext();
     const ctx = audioCtxRef.current;
 
-    let phaseIdx = 0;
-    let phaseTimer: ReturnType<typeof setTimeout>;
-    let countdownInterval: ReturnType<typeof setInterval>;
+    let localPhaseIdx = phaseIdx;
+    // If phaseRemainingMs is 0 or full, start fresh; otherwise resume mid-phase
+    let firstPhaseRemaining =
+      phaseRemainingMs > 0 && phaseRemainingMs < session.phases[localPhaseIdx % session.phases.length].duration
+        ? phaseRemainingMs
+        : session.phases[localPhaseIdx % session.phases.length].duration;
 
-    const startPhase = () => {
-      const currentPhase = session.phases[phaseIdx % session.phases.length];
-      setBreathPhase(currentPhase.name);
-      const phaseSec = currentPhase.duration / 1000;
-      setPhaseCountdown(phaseSec);
+    const runPhase = (remainingMs: number) => {
+      const phase = session.phases[localPhaseIdx % session.phases.length];
+      const fullDuration = phase.duration;
+      phaseDurationRef.current = fullDuration;
+      phaseStartedAtRef.current = Date.now() - (fullDuration - remainingMs);
+      setPhaseIdx(localPhaseIdx);
+      setPhaseRemainingMs(remainingMs);
 
-      if (currentPhase.name === "inhale" || currentPhase.name === "exhale") {
-        playBreathSound(ctx, currentPhase.name);
+      if (phase.name === "inhale" || phase.name === "exhale") {
+        playBreathSound(ctx, phase.name);
       }
 
-      let remaining = phaseSec;
-      countdownInterval = setInterval(() => {
-        remaining--;
-        if (remaining >= 0) setPhaseCountdown(remaining);
-      }, 1000);
-
-      phaseTimer = setTimeout(() => {
-        clearInterval(countdownInterval);
-        phaseIdx++;
-        startPhase();
-      }, currentPhase.duration);
+      phaseTimerRef.current = setTimeout(() => {
+        localPhaseIdx++;
+        const next = session.phases[localPhaseIdx % session.phases.length];
+        runPhase(next.duration);
+      }, remainingMs);
     };
 
-    startPhase();
+    runPhase(firstPhaseRemaining);
 
-    const elapsedInterval = setInterval(() => {
+    tickRef.current = setInterval(() => {
       setTotalElapsed((t) => t + 1);
+      // update phase remaining based on real time
+      const left = Math.max(
+        phaseDurationRef.current - (Date.now() - phaseStartedAtRef.current),
+        0,
+      );
+      setPhaseRemainingMs(left);
     }, 1000);
 
     return () => {
-      clearTimeout(phaseTimer);
-      clearInterval(countdownInterval);
-      clearInterval(elapsedInterval);
+      if (phaseTimerRef.current) clearTimeout(phaseTimerRef.current);
+      if (tickRef.current) clearInterval(tickRef.current);
     };
-  }, [activeSession, session]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [running, session]);
 
+  // Auto-stop on duration completion
   useEffect(() => {
     if (session && session.durationSec > 0 && totalElapsed >= session.durationSec) {
       stopSession();
+      toast.success("Session complete 🌿");
     }
   }, [totalElapsed, session, stopSession]);
 
+  // Start a fresh session (safety: stops binaural + timers first)
   const startSession = (key: string) => {
+    clearAllTimers();
+    closeAudio();
     setBinauralPlaying(false);
-    stopSession();
-    setTimeout(() => setActiveSession(key), 50);
+    setActiveSession(key);
+    setPhaseIdx(0);
+    setPhaseRemainingMs(SESSIONS[key].phases[0].duration);
+    setTotalElapsed(0);
+    setRunning(true);
   };
 
-  const stopBinaural = () => {
+  const resumeSession = () => {
+    if (!activeSession) return;
+    // Safety: stop binaural before resuming breathing
     setBinauralPlaying(false);
+    setRunning(true);
   };
+
+  const stopBinaural = () => setBinauralPlaying(false);
 
   const handleBinauralClick = () => {
     if (binauralPlaying) {
@@ -243,11 +348,10 @@ const MeditationPage = () => {
 
   const confirmBinaural = () => {
     setShowHeadphoneAlert(false);
-    stopSession();
+    // Safety: stop breathing timers before starting binaural
+    pauseRunning();
     setBinauralPlaying(true);
   };
-
-  const isActive = activeSession !== null;
 
   return (
     <div className="min-h-screen bg-background flex flex-col">
@@ -256,13 +360,35 @@ const MeditationPage = () => {
         <h1 className="mb-2 text-center text-3xl font-bold text-foreground sm:text-4xl">
           Meditation Hub
         </h1>
-        <p className="mb-10 max-w-xl text-center text-sm leading-7 text-muted-foreground sm:mb-12 sm:text-base">
+        <p className="mb-6 max-w-xl text-center text-sm leading-7 text-muted-foreground sm:text-base">
           Find calm through guided breathing and relaxation.
         </p>
 
+        {/* Resume banner when there's saved progress but not running */}
+        {hasSavedSession && !running && (
+          <motion.div
+            initial={{ opacity: 0, y: -8 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="mb-6 flex flex-wrap items-center justify-center gap-3 rounded-2xl border border-border bg-card/60 px-4 py-3 text-sm"
+          >
+            <span className="text-muted-foreground">
+              Saved session: <span className="font-medium text-foreground">{session?.title}</span>
+              {session && session.durationSec > 0 && ` · ${formatTime(remainingTime)} left`}
+            </span>
+            <div className="flex gap-2">
+              <Button onClick={resumeSession} size="sm" className="gap-1.5 rounded-full">
+                <Play className="w-4 h-4" /> Resume
+              </Button>
+              <Button onClick={resetProgress} size="sm" variant="outline" className="gap-1.5 rounded-full">
+                <RotateCcw className="w-4 h-4" /> Reset
+              </Button>
+            </div>
+          </motion.div>
+        )}
+
         {/* Active session info */}
         <AnimatePresence>
-          {session && (
+          {session && running && (
             <motion.div
               initial={{ opacity: 0, y: -10 }}
               animate={{ opacity: 1, y: 0 }}
@@ -280,21 +406,21 @@ const MeditationPage = () => {
           <motion.div
             className="flex h-40 w-40 items-center justify-center rounded-full bg-calm-lavender sm:h-48 sm:w-48"
             animate={isActive ? {
-              scale: breathPhase === "inhale" ? 1.3 : breathPhase === "hold" ? 1.3 : 1,
+              scale: currentPhase === "inhale" ? 1.3 : currentPhase === "hold" ? 1.3 : 1,
             } : { scale: 1 }}
-            transition={{ duration: session ? session.phases.find(p => p.name === breathPhase)!.duration / 1000 : 4, ease: "easeInOut" }}
+            transition={{ duration: session ? session.phases.find(p => p.name === currentPhase)!.duration / 1000 : 4, ease: "easeInOut" }}
           >
             <motion.div
               className="flex h-28 w-28 items-center justify-center rounded-full bg-soft-blue sm:h-32 sm:w-32"
               animate={isActive ? {
-                scale: breathPhase === "inhale" ? 1.2 : breathPhase === "hold" ? 1.2 : 1,
+                scale: currentPhase === "inhale" ? 1.2 : currentPhase === "hold" ? 1.2 : 1,
               } : { scale: 1 }}
-              transition={{ duration: session ? session.phases.find(p => p.name === breathPhase)!.duration / 1000 : 4, ease: "easeInOut" }}
+              transition={{ duration: session ? session.phases.find(p => p.name === currentPhase)!.duration / 1000 : 4, ease: "easeInOut" }}
             >
               <div className="text-center">
                 {isActive ? (
                   <>
-                    <p className="text-lg font-semibold text-foreground capitalize">{breathPhase}</p>
+                    <p className="text-lg font-semibold text-foreground capitalize">{currentPhase}</p>
                     <p className="text-2xl font-bold text-primary">{phaseCountdown}</p>
                   </>
                 ) : (
@@ -331,17 +457,25 @@ const MeditationPage = () => {
         )}
 
         {/* Start/Stop */}
-        <div className="flex gap-3 mb-12">
+        <div className="flex flex-wrap justify-center gap-3 mb-12">
           {isActive ? (
-            <Button onClick={stopSession} size="lg" variant="destructive" className="gap-2 rounded-full px-8">
-              <IoClose className="w-5 h-5" />
-              Stop Session
-            </Button>
+            <>
+              <Button onClick={stopSession} size="lg" variant="destructive" className="gap-2 rounded-full px-8">
+                <IoClose className="w-5 h-5" />
+                Stop Session
+              </Button>
+              <Button onClick={resetProgress} size="lg" variant="outline" className="gap-2 rounded-full px-6">
+                <RotateCcw className="w-5 h-5" />
+                Reset Progress
+              </Button>
+            </>
           ) : (
-            <Button onClick={() => startSession("breathing")} size="lg" className="w-full max-w-sm gap-2 rounded-full px-8 sm:w-auto">
-              <GiMeditation className="w-5 h-5" />
-              Start Breathing Exercise
-            </Button>
+            !hasSavedSession && (
+              <Button onClick={() => startSession("breathing")} size="lg" className="w-full max-w-sm gap-2 rounded-full px-8 sm:w-auto">
+                <GiMeditation className="w-5 h-5" />
+                Start Breathing Exercise
+              </Button>
+            )
           )}
         </div>
 
