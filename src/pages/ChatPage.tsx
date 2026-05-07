@@ -356,7 +356,36 @@ const ChatPage = () => {
             </Button>
             <img src={shellyHappy} alt="Shelly" className="h-9 w-9 sm:h-11 sm:w-11" />
             <div className="flex-1 min-w-0">
-              <h1 className="text-base font-bold text-foreground sm:text-lg">Shelly Chat</h1>
+              <div className="flex items-center gap-2">
+                <h1 className="text-base font-bold text-foreground sm:text-lg">Shelly Chat</h1>
+                <span
+                  title={
+                    apiStatus === "online"
+                      ? "Chat service online"
+                      : apiStatus === "offline"
+                        ? "Chat service unreachable"
+                        : "Checking chat service…"
+                  }
+                  className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium ${
+                    apiStatus === "online"
+                      ? "bg-green-500/15 text-green-700 dark:text-green-400"
+                      : apiStatus === "offline"
+                        ? "bg-destructive/15 text-destructive"
+                        : "bg-muted text-muted-foreground"
+                  }`}
+                >
+                  <span
+                    className={`h-1.5 w-1.5 rounded-full ${
+                      apiStatus === "online"
+                        ? "bg-green-500"
+                        : apiStatus === "offline"
+                          ? "bg-destructive"
+                          : "bg-muted-foreground animate-pulse"
+                    }`}
+                  />
+                  {apiStatus === "online" ? "Online" : apiStatus === "offline" ? "Offline" : "Checking"}
+                </span>
+              </div>
               <p className="text-[11px] text-muted-foreground sm:text-xs truncate">
                 Support for emotions, stress & wellbeing
               </p>
