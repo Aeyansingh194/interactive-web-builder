@@ -25,12 +25,26 @@ type MoodEntry = {
   emotions: string[]; timestamp: Date; note: string;
 };
 
+const generateMockEntries = (): MoodEntry[] => {
+  const now = new Date();
+  return [
+    { mood: 7, stress: 3, energy: 6, emotions: ["Joy", "Calm"], timestamp: new Date(now.getTime() - 0 * 86400000), note: "Had a great morning walk." },
+    { mood: 5, stress: 6, energy: 4, emotions: ["Stress", "Tired"], timestamp: new Date(now.getTime() - 1 * 86400000), note: "Long day at work." },
+    { mood: 8, stress: 2, energy: 7, emotions: ["Joy", "Energetic"], timestamp: new Date(now.getTime() - 2 * 86400000), note: "Finished a big project!" },
+    { mood: 6, stress: 4, energy: 5, emotions: ["Calm"], timestamp: new Date(now.getTime() - 3 * 86400000), note: "Meditated for 15 minutes." },
+    { mood: 4, stress: 7, energy: 3, emotions: ["Anxiety", "Tired"], timestamp: new Date(now.getTime() - 4 * 86400000), note: "Couldn’t sleep well last night." },
+    { mood: 9, stress: 1, energy: 8, emotions: ["Joy", "Energetic", "Calm"], timestamp: new Date(now.getTime() - 5 * 86400000), note: "Weekend hike with friends." },
+    { mood: 6, stress: 5, energy: 6, emotions: ["Calm", "Stress"], timestamp: new Date(now.getTime() - 6 * 86400000), note: "Balanced day overall." },
+    { mood: 7, stress: 3, energy: 7, emotions: ["Joy"], timestamp: new Date(now.getTime() - 7 * 86400000), note: "Good focus during work." },
+  ];
+};
+
 const MoodPage = () => {
   const [moodVal, setMoodVal] = useState(7);
   const [stressVal, setStressVal] = useState(3);
   const [energyVal, setEnergyVal] = useState(6);
   const [note, setNote] = useState("");
-  const [entries, setEntries] = useState<MoodEntry[]>([]);
+  const [entries, setEntries] = useState<MoodEntry[]>(generateMockEntries);
   const [selectedEmotions, setSelectedEmotions] = useState<string[]>([]);
   const [activeChart, setActiveChart] = useState<"Mood" | "Stress" | "Energy">("Mood");
   const [analysis, setAnalysis] = useState<string | null>(null);
