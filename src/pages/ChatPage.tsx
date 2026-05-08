@@ -167,6 +167,12 @@ const ChatPage = () => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
   }, [messages]);
 
+  // Re-detect language whenever the latest user message changes
+  useEffect(() => {
+    const lastUser = [...messages].reverse().find((m) => m.role === "user");
+    setDetectedLang(lastUser ? detectLanguage(lastUser.content) : null);
+  }, [messages]);
+
   // Persist sessions
   useEffect(() => {
     saveSessions(sessions);
