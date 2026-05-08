@@ -69,27 +69,45 @@ const MoodPage = () => {
     toast({ title: "Mood logged ✅", description: `Mood: ${moodVal}/10, Stress: ${stressVal}/10, Energy: ${energyVal}/10` });
   };
 
-  // Chart data from entries
+  // Build 7-day window ending on selectedDate for charts
+  const weekWindow = useMemo(() => {
+    const days: { date: Date; label: string }[] = [];
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date(selectedDate);
+      d.setDate(d.getDate() - i);
+      days.push({ date: d, label: d.toLocaleDateString("en-US", { weekday: "short" }) });
+    }
+    return days;
+  }, [selectedDate]);
+
   const chartData = useMemo(() => {
-    const days = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
-    return days.map((d, i) => {
-      const dayEntries = entries.filter((e) => e.timestamp.getDay() === (i + 1) % 7);
+    return weekWindow.map(({ date, label }) => {
+      const dayEntries = entries.filter((e) => sameDay(e.timestamp, date));
       return {
-        name: d,
+        name: label,
         Mood: dayEntries.length ? Math.round(dayEntries.reduce((s, e) => s + e.mood, 0) / dayEntries.length) : null,
         Stress: dayEntries.length ? Math.round(dayEntries.reduce((s, e) => s + e.stress, 0) / dayEntries.length) : null,
         Energy: dayEntries.length ? Math.round(dayEntries.reduce((s, e) => s + e.energy, 0) / dayEntries.length) : null,
       };
     });
-  }, [entries]);
+  }, [weekWindow, entries]);
 
   const weeklyBarData = useMemo(() => {
-    const days = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
-    return days.map((d, i) => {
-      const dayEntries = entries.filter((e) => e.timestamp.getDay() === (i + 1) % 7);
-      return { name: d, mood: dayEntries.length ? +(dayEntries.reduce((s, e) => s + e.mood, 0) / dayEntries.length).toFixed(1) : 0, stress: dayEntries.length ? +(dayEntries.reduce((s, e) => s + e.stress, 0) / dayEntries.length).toFixed(1) : 0 };
+    return weekWindow.map(({ date, label }) => {
+      const dayEntries = entries.filter((e) => sameDay(e.timestamp, date));
+      return {
+        name: label,
+        mood: dayEntries.length ? +(dayEntries.reduce((s, e) => s + e.mood, 0) / dayEntries.length).toFixed(1) : 0,
+        stress: dayEntries.length ? +(dayEntries.reduce((s, e) => s + e.stress, 0) / dayEntries.length).toFixed(1) : 0,
+      };
     });
-  }, [entries]);
+  }, [weekWindow, entries]);
+
+  // Entries for the selected date
+  const selectedDayEntries = useMemo(
+    () => entries.filter((e) => sameDay(e.timestamp, selectedDate)),
+    [entries, selectedDate],
+  );
 
   // Emotion distribution
   const emotionCounts = useMemo(() => {
