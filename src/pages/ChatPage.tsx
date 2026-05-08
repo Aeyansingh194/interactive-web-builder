@@ -9,6 +9,7 @@ import ReactMarkdown from "react-markdown";
 import shellyHappy from "@/assets/shelly-happy.png";
 import { useToast } from "@/hooks/use-toast";
 import { ShellyStreamError, streamShellyResponse } from "@/lib/shelly-stream";
+import { detectLanguage, type DetectedLanguage } from "@/lib/detect-language";
 
 type Msg = { role: "user" | "assistant"; content: string };
 
@@ -98,6 +99,7 @@ const ChatPage = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [showSidebar, setShowSidebar] = useState(false);
   const [apiStatus, setApiStatus] = useState<"checking" | "online" | "offline">("checking");
+  const [detectedLang, setDetectedLang] = useState<DetectedLanguage | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const { toast } = useToast();
 
@@ -163,6 +165,12 @@ const ChatPage = () => {
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
+  }, [messages]);
+
+  // Re-detect language whenever the latest user message changes
+  useEffect(() => {
+    const lastUser = [...messages].reverse().find((m) => m.role === "user");
+    setDetectedLang(lastUser ? detectLanguage(lastUser.content) : null);
   }, [messages]);
 
   // Persist sessions
@@ -252,9 +260,13 @@ const ChatPage = () => {
         ]
       : currentMessages;
 
+    const lang = detectLanguage(userMsg.content);
+    setDetectedLang(lang);
+
     try {
       await streamShellyResponse({
         messages: messagesWithMemory,
+        languageHint: lang?.hint,
         onDelta: (content) => {
           assistantSoFar += content;
           const snapshot = assistantSoFar;
@@ -385,6 +397,15 @@ const ChatPage = () => {
                   />
                   {apiStatus === "online" ? "Online" : apiStatus === "offline" ? "Offline" : "Checking"}
                 </span>
+                {detectedLang && (
+                  <span
+                    title={`Detected language for your last message: ${detectedLang.label}. Shelly will reply in ${detectedLang.label}.`}
+                    className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-medium text-primary"
+                  >
+                    {detectedLang.flag && <span aria-hidden>{detectedLang.flag}</span>}
+                    {detectedLang.label}
+                  </span>
+                )}
               </div>
               <p className="text-[11px] text-muted-foreground sm:text-xs truncate">
                 Support for emotions, stress & wellbeing

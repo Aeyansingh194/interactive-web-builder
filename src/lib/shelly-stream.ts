@@ -52,10 +52,12 @@ export const streamShellyResponse = async ({
   messages,
   onDelta,
   signal,
+  languageHint,
 }: {
   messages: ShellyMessage[];
   onDelta: (chunk: string) => void;
   signal?: AbortSignal;
+  languageHint?: string;
 }) => {
   const apiBaseUrl = import.meta.env.VITE_SUPABASE_URL;
   const publishableKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
@@ -71,7 +73,7 @@ export const streamShellyResponse = async ({
       apikey: publishableKey,
       Authorization: `Bearer ${publishableKey}`,
     },
-    body: JSON.stringify({ messages }),
+    body: JSON.stringify({ messages, languageHint }),
     signal,
   });
 

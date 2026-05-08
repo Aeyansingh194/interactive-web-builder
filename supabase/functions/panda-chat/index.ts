@@ -10,6 +10,7 @@ serve(async (req) => {
 
   try {
     const payload = await req.json().catch(() => null);
+    const languageHint = typeof payload?.languageHint === "string" ? payload.languageHint.slice(0, 300) : "";
     const messages = Array.isArray(payload?.messages)
       ? payload.messages
           .filter(
@@ -72,6 +73,12 @@ NON-NEGOTIABLE RULES:
 
 11. LANGUAGE MIRRORING (CRITICAL): Always reply in the SAME language and script the user wrote their most recent message in. If the user writes in Hindi (Devanagari script), reply in Hindi using Devanagari. If they write Hinglish (Hindi in Latin script), reply in Hinglish. If Spanish, reply in Spanish. If English, reply in English. Mirror their language for EVERY reply, switching whenever they switch. Never translate to English unless the user wrote in English.`
           },
+          ...(languageHint
+            ? [{
+                role: "system" as const,
+                content: `LANGUAGE DIRECTIVE FOR THIS REPLY (highest priority): ${languageHint} Detect freshly each turn — if the user switched languages, switch with them. CRITICAL: If the directive says Hinglish, write in Latin/Roman script ONLY (e.g. "Mujhe samajh aata hai") — never use Devanagari for Hinglish. If the directive says Hindi, use Devanagari script.`,
+              }]
+            : []),
           ...messages,
         ],
         stream: true,
