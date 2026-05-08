@@ -1,7 +1,12 @@
 import { useState, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
+import { format } from "date-fns";
+import { CalendarIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
+import { Calendar } from "@/components/ui/calendar";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { cn } from "@/lib/utils";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 import { useToast } from "@/hooks/use-toast";
@@ -45,7 +50,11 @@ const MoodPage = () => {
   const [activeChart, setActiveChart] = useState<"Mood" | "Stress" | "Energy">("Mood");
   const [analysis, setAnalysis] = useState<string | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [selectedDate, setSelectedDate] = useState<Date>(new Date());
   const { toast } = useToast();
+
+  const sameDay = (a: Date, b: Date) =>
+    a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
 
   const toggleEmotion = (e: string) =>
     setSelectedEmotions((prev) => prev.includes(e) ? prev.filter((x) => x !== e) : [...prev, e]);
@@ -60,27 +69,45 @@ const MoodPage = () => {
     toast({ title: "Mood logged ✅", description: `Mood: ${moodVal}/10, Stress: ${stressVal}/10, Energy: ${energyVal}/10` });
   };
 
-  // Chart data from entries
+  // Build 7-day window ending on selectedDate for charts
+  const weekWindow = useMemo(() => {
+    const days: { date: Date; label: string }[] = [];
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date(selectedDate);
+      d.setDate(d.getDate() - i);
+      days.push({ date: d, label: d.toLocaleDateString("en-US", { weekday: "short" }) });
+    }
+    return days;
+  }, [selectedDate]);
+
   const chartData = useMemo(() => {
-    const days = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
-    return days.map((d, i) => {
-      const dayEntries = entries.filter((e) => e.timestamp.getDay() === (i + 1) % 7);
+    return weekWindow.map(({ date, label }) => {
+      const dayEntries = entries.filter((e) => sameDay(e.timestamp, date));
       return {
-        name: d,
+        name: label,
         Mood: dayEntries.length ? Math.round(dayEntries.reduce((s, e) => s + e.mood, 0) / dayEntries.length) : null,
         Stress: dayEntries.length ? Math.round(dayEntries.reduce((s, e) => s + e.stress, 0) / dayEntries.length) : null,
         Energy: dayEntries.length ? Math.round(dayEntries.reduce((s, e) => s + e.energy, 0) / dayEntries.length) : null,
       };
     });
-  }, [entries]);
+  }, [weekWindow, entries]);
 
   const weeklyBarData = useMemo(() => {
-    const days = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
-    return days.map((d, i) => {
-      const dayEntries = entries.filter((e) => e.timestamp.getDay() === (i + 1) % 7);
-      return { name: d, mood: dayEntries.length ? +(dayEntries.reduce((s, e) => s + e.mood, 0) / dayEntries.length).toFixed(1) : 0, stress: dayEntries.length ? +(dayEntries.reduce((s, e) => s + e.stress, 0) / dayEntries.length).toFixed(1) : 0 };
+    return weekWindow.map(({ date, label }) => {
+      const dayEntries = entries.filter((e) => sameDay(e.timestamp, date));
+      return {
+        name: label,
+        mood: dayEntries.length ? +(dayEntries.reduce((s, e) => s + e.mood, 0) / dayEntries.length).toFixed(1) : 0,
+        stress: dayEntries.length ? +(dayEntries.reduce((s, e) => s + e.stress, 0) / dayEntries.length).toFixed(1) : 0,
+      };
     });
-  }, [entries]);
+  }, [weekWindow, entries]);
+
+  // Entries for the selected date
+  const selectedDayEntries = useMemo(
+    () => entries.filter((e) => sameDay(e.timestamp, selectedDate)),
+    [entries, selectedDate],
+  );
 
   // Emotion distribution
   const emotionCounts = useMemo(() => {
@@ -175,7 +202,28 @@ const MoodPage = () => {
                   <h2 className="text-lg font-bold text-foreground">📈 Mood Tracker</h2>
                   <p className="text-xs text-muted-foreground">Track your emotional well-being over time</p>
                 </div>
-                <span className="text-lg">📅</span>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className={cn("gap-2 rounded-full", !selectedDate && "text-muted-foreground")}
+                    >
+                      <CalendarIcon className="h-4 w-4" />
+                      {format(selectedDate, "PPP")}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0" align="end">
+                    <Calendar
+                      mode="single"
+                      selected={selectedDate}
+                      onSelect={(d) => d && setSelectedDate(d)}
+                      disabled={(date) => date > new Date()}
+                      initialFocus
+                      className={cn("p-3 pointer-events-auto")}
+                    />
+                  </PopoverContent>
+                </Popover>
               </div>
               {/* Chart tabs */}
               <div className="my-4 flex flex-wrap gap-2">
@@ -210,6 +258,44 @@ const MoodPage = () => {
                     {l.label}
                   </div>
                 ))}
+              </div>
+
+              {/* Selected day snapshot */}
+              <div className="mt-5 rounded-xl border border-border bg-muted/30 p-4">
+                <div className="mb-2 flex items-center justify-between">
+                  <p className="text-xs font-semibold text-foreground">
+                    📍 {format(selectedDate, "EEEE, MMM d")}
+                  </p>
+                  <span className="text-[10px] text-muted-foreground">
+                    {selectedDayEntries.length} {selectedDayEntries.length === 1 ? "entry" : "entries"}
+                  </span>
+                </div>
+                {selectedDayEntries.length === 0 ? (
+                  <p className="text-xs text-muted-foreground">
+                    No mood entries for this day. Pick another date or log a mood below.
+                  </p>
+                ) : (
+                  <div className="grid grid-cols-3 gap-3 text-center">
+                    <div>
+                      <p className="text-[10px] text-muted-foreground">Mood</p>
+                      <p className="text-base font-bold text-primary">
+                        {(selectedDayEntries.reduce((s, e) => s + e.mood, 0) / selectedDayEntries.length).toFixed(1)}/10
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-[10px] text-muted-foreground">Stress</p>
+                      <p className="text-base font-bold text-destructive">
+                        {(selectedDayEntries.reduce((s, e) => s + e.stress, 0) / selectedDayEntries.length).toFixed(1)}/10
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-[10px] text-muted-foreground">Energy</p>
+                      <p className="text-base font-bold text-success">
+                        {(selectedDayEntries.reduce((s, e) => s + e.energy, 0) / selectedDayEntries.length).toFixed(1)}/10
+                      </p>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
 
